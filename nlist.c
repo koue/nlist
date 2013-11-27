@@ -3,7 +3,7 @@
 /*
  *
  * Copyright (c) 2004-2006 Daniel Hartmeier. All rights reserved.
- * Copyright (c) 2011, 2012 Nikola Kolev. All rights reserved.
+ * Copyright (c) 2011-2013 Nikola Kolev. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -99,8 +99,6 @@ static int	 compare_name_des_fts(const FTSENT **a, const FTSENT **b);
 static const char *rfc822_time(time_t t);
 void		 msg(const char *fmt, ...);
 void		 chomp(char *s);
-
-int compare_qsort(const void *va, const void *vb);
 
 static double
 timelapse(struct timeval *t)
@@ -272,7 +270,7 @@ find_articles(const char *path, struct entry *a, int size)
 	parent[0] = article[0] = 0;
 
 	memset(a, 0, size * sizeof(*a));
-	fts = fts_open(path_argv, FTS_LOGICAL|FTS_NOSTAT,
+	fts = fts_open(path_argv, FTS_LOGICAL,
 	    compare_name_des_fts);
 	if (fts == NULL) {
 		dprintf("fts_open: %s: %s<br>\n", path, strerror(errno));
@@ -286,43 +284,6 @@ find_articles(const char *path, struct entry *a, int size)
 			    path, strerror(errno));
 		return;
 	}
-
-/*	if((q->query_string != NULL) && (strlen(q->query_string) > 1)) {
-		// if the query_string ends with "/" this is request for directory listing
-		if (q->query_string[strlen(q->query_string)-1] == '/') {
-			for (tmp = q->query_string; (pos = strstr(tmp, "/")) != NULL;) {
-				*pos = 0;
-				tmp = pos + 1;
-				if ((pos = strstr(tmp, "/")) != NULL) {
-					strlcpy(parent, tmp, sizeof(parent));
-				}
-			}
-			// replace the last "/" character into parent string with NULL character
-			if ((pos = strstr(parent, "/")) != NULL)
-				*pos = 0;
-			// disable directory listing and show only index.txt file
-			strlcpy(article, "index", sizeof(article));
-			strlcat(article,".txt",sizeof(article));
-
-		} else if ((q->query_string[strlen(q->query_string)-1] == 'l')
-		 		&& (q->query_string[strlen(q->query_string)-2] == 'm')
-		 		&& (q->query_string[strlen(q->query_string)-3] == 't')
-		 		&& (q->query_string[strlen(q->query_string)-4] == 'h')
-		 		&& (q->query_string[strlen(q->query_string)-5] == '.')) {
-			for (tmp = q->query_string; (pos = strstr(tmp, "/")) != NULL;) {
-				*pos = 0;
-				tmp = pos + 1;
-				if ((pos = strstr(tmp, ".")) != NULL) {
-					strlcpy(article, tmp, sizeof(article));
-				}
-			}
-			// separate article name from the ".html"
-			if ((pos = strstr(article, ".")) != NULL) 
-				*pos = 0;
-			strlcat(article,".txt",sizeof(article));
-		}	
-	}
-*/
 
 /* prasing query string */
 	if(q->query_string != NULL) {
@@ -375,14 +336,12 @@ find_articles(const char *path, struct entry *a, int size)
 			*pos = 0;
 			
 			strlcpy(a[i].name, e->fts_name, sizeof(a[i].name));
-		// breaks the code: see read_file func pubdate var
-		//	a[i].pubdate = e->fts_statp->st_birthtime;
+			a[i].pubdate = e->fts_statp->st_mtime;
 
 			i++;
 		}
 	}
 	fts_close(fts);
-	qsort(a, i, sizeof(struct entry), &compare_qsort);
 }
 
 static int
@@ -393,12 +352,12 @@ read_file(struct entry *e)
 	struct stat file;
 
 	e->name[0] = e->parent[0] = e->title[0] = 0;
-	e->pubdate = 0;
+//	e->pubdate = 0;
 	if ((f = fopen(e->fn, "r")) == NULL)
 		return (1);
 
-	if ((stat(e->fn, &file)) != -1)
-		e->pubdate = file.st_birthtime;
+//	if ((stat(e->fn, &file)) != -1)
+//		e->pubdate = file.st_birthtime;
 
 	fgets(s, sizeof(s), f);
 	if (s[0]) {
@@ -712,20 +671,6 @@ msg(const char *fmt, ...)
 	fprintf(f, "\n");
 	fflush(f);
 	fclose(f);
-}
-
-int
-compare_qsort(const void *va, const void *vb)
-{
-	const struct entry *a = (const struct entry *)va;
-	const struct entry *b = (const struct entry *)vb;
-
-	if ( a->pubdate < b->pubdate)
-		return 1;
-	else if (a->pubdate > b->pubdate)
-		return -1;
-	else
-		return 0;
 }
 
 int
