@@ -1,9 +1,9 @@
-/* 	nlist.c, v 1.0 2011/11/24 koue 					*/
+/* 	nlist.c, v 1.1 2014/03/06 koue 					*/
 
 /*
  *
  * Copyright (c) 2004-2006 Daniel Hartmeier. All rights reserved.
- * Copyright (c) 2011-2013 Nikola Kolev. All rights reserved.
+ * Copyright (c) 2011-2014 Nikola Kolev. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -82,14 +82,16 @@ struct conf confentries[] = {
 };
 static struct query	*q = NULL;
 static struct entry	 newest[64];	/* 9 front, 9 weeklist */
-static const char	*mode = NULL;
 static gzFile		 gz = NULL;
+static int		rss_request = 0;
 
 typedef	void (*render_cb)(const char *, const struct entry *);
 
 static void	 render_error(const char *fmt, ...);
 static int	 render_html(const char *html_fn, render_cb r,
 		    const struct entry *e);
+static void	render_rss(const char *m, const struct entry *e);
+static void	render_rss_item(const char *m, const struct entry *e);
 static void	 render_front(const char *m, const struct entry *e);
 static void	 render_front_story(const char *m, const struct entry *e);
 static void	 find_articles(const char *path, struct entry *a, int size);
@@ -114,7 +116,7 @@ timelapse(struct timeval *t)
 }
 
 static void
-dprintf(const char *fmt, ...)
+d_printf(const char *fmt, ...)
 {
 	static char s[65536];
 	va_list ap;
@@ -124,11 +126,11 @@ dprintf(const char *fmt, ...)
 	r = vsnprintf(s, sizeof(s), fmt, ap);
 	va_end(ap);
 	if (r < 0 || r >= sizeof(s))
-		msg("error dprintf: vsnprintf: r %d (%d)", r, (int)sizeof(s));
+		msg("error d_printf: vsnprintf: r %d (%d)", r, (int)sizeof(s));
 	if (gz != NULL) {
 		r = gzputs(gz, s);
 		if (r != strlen(s))
-			msg("error dprintf: gzputs: r %d (%d)",
+			msg("error d_printf: gzputs: r %d (%d)",
 			    r, (int)strlen(s));
 	} else
 		fprintf(stdout, "%s", s);
@@ -145,26 +147,26 @@ render_error(const char *fmt, ...)
 	va_end(ap);
 	printf("%s\r\n\r\n", ct_html);
 	fflush(stdout);
-	dprintf("<html><head><title>Error</title></head><body>\n");
-	dprintf("<h2>Error</h2><p><b>%s</b><p>\n", s);
+	d_printf("<html><head><title>Error</title></head><body>\n");
+	d_printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
 	if (q != NULL) {
-		dprintf("Request: <b>%s</b><br>\n",
+		d_printf("Request: <b>%s</b><br>\n",
 		    html_esc(q->query_string, e, sizeof(e), 0));
-		dprintf("Address: <b>%s</b><br>\n",
+		d_printf("Address: <b>%s</b><br>\n",
 		    html_esc(q->remote_addr, e, sizeof(e), 0));
 		if (q->user_agent != NULL)
-			dprintf("User agent: <b>%s</b><br>\n",
+			d_printf("User agent: <b>%s</b><br>\n",
 			    html_esc(q->user_agent, e, sizeof(e), 0));
 		if (q->referer != NULL)
-			dprintf("Referer: <b>%s</b><br>\n",
+			d_printf("Referer: <b>%s</b><br>\n",
 			    html_esc(q->referer, e, sizeof(e), 0));
 	}
-	dprintf("Time: <b>%s</b><br>\n", rfc822_time(time(0)));
-	dprintf("<p>If you believe this is a bug in <i>this</i> server, "
+	d_printf("Time: <b>%s</b><br>\n", rfc822_time(time(0)));
+	d_printf("<p>If you believe this is a bug in <i>this</i> server, "
 	    "please send reports with instructions about how to "
 	    "reproduce to <a href=\"mailto:%s\"><b>%s</b></a><p>\n",
 	    mailaddr, mailaddr);
-	dprintf("</body></html>\n");
+	d_printf("</body></html>\n");
 }
 
 static int
@@ -174,7 +176,7 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 	char s[8192];
 
 	if ((f = fopen(html_fn, "r")) == NULL) {
-		dprintf("ERROR: fopen: %s: %s<br>\n", html_fn, strerror(errno));
+		d_printf("ERROR: fopen: %s: %s<br>\n", html_fn, strerror(errno));
 		return (1);
 	}
 	while (fgets(s, sizeof(s), f)) {
@@ -182,23 +184,69 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 
 		for (a = s; (b = strstr(a, "%%")) != NULL;) {
 			*b = 0;
-			dprintf("%s", a);
+			d_printf("%s", a);
 			a = b + 2;
 			if ((b = strstr(a, "%%")) != NULL) {
 				*b = 0;
 				if (!strcmp(a, "BASEURL"))
-					dprintf("%s", baseurl);
+					d_printf("%s", baseurl);
 				else if (!strcmp(a, "CTYPE"))
-					dprintf("%s", ct_html);
+					d_printf("%s", ct_html);
 				else if (r != NULL)
 					(*r)(a, e);
 				a = b + 2;
 			}
 		}
-		dprintf("%s", a);
+		d_printf("%s", a);
 	}
 	fclose(f);
 	return (0);
+}
+
+static void
+render_rss(const char *m, const struct entry *e)
+{
+	if (!strcmp(m, "ITEMS")) {
+		char fn[1024];
+		int i;
+		snprintf(fn, sizeof(fn), "%s/summary_item.rss", htmldir);
+		for (i = 0; newest[i].name[0]; ++i) 
+			render_html(fn, &render_rss_item, &newest[i]);
+		
+	} else
+		d_printf("render_rss: unknown macro '%s'\n", m);
+}
+
+static void
+render_rss_item(const char *m, const struct entry *e)
+{
+	char d[256];
+
+	if (!strcmp(m, "TITLE")) {
+		d_printf("%s", html_esc(e->title, d, sizeof(d), 0));
+	} else if (!strcmp(m, "LINK")) {
+		d_printf("%s/%s.html", baseurl, e->name);
+	} else if (!strcmp(m, "DATE")) {
+		d_printf("%s", ctime(&e->pubdate));
+	} else if (!strcmp(m, "BODY")) {
+		FILE *f;
+		char s[8192], fn[8192];
+
+		if ((f = fopen(e->fn, "r")) == NULL) {
+			d_printf("render_rss_item: fopen %s: %s\n",
+				e->fn, strerror(errno));
+			return;
+		}
+
+		int line = 0;
+		while (fgets(s, sizeof(s), f)) {
+			if(line)
+				d_printf("%s", s);
+			line++;
+		}
+		fclose(f);
+	} else
+		d_printf("render_rss_item: unknown macro '%s'\n", m);
 }
 
 static void
@@ -219,7 +267,7 @@ render_front(const char *m, const struct entry *e)
 		snprintf(fn, sizeof(fn), "%s/footer.html", htmldir);
 		render_html(fn, NULL, NULL);
 	} else
-		dprintf("render_front: unknown macro '%s'<br>\n", m);
+		d_printf("render_front: unknown macro '%s'<br>\n", m);
 }
 
 static void
@@ -227,35 +275,35 @@ render_front_story(const char *m, const struct entry *e)
 {
 	if (!strcmp(m, "NAME")) {
 		if (e->title[0])
-			dprintf("%s", e->title);
+			d_printf("%s", e->title);
 		else
-			dprintf("%s", "NONAMEZ");
+			d_printf("%s", "NONAMEZ");
 	} else if (!strcmp(m, "DATE")) {
-		dprintf("%s", ctime(&e->pubdate));
+		d_printf("%s", ctime(&e->pubdate));
 	} else if (!strcmp(m, "BASEURL")) {
-		dprintf("%s", baseurl);
+		d_printf("%s", baseurl);
 	} else if (!strcmp(m, "ARTICLE")) {
 		if (e->parent[0])
-			dprintf("%s/", e->parent);
-		dprintf("%s", e->name);
+			d_printf("%s/", e->parent);
+		d_printf("%s", e->name);
 	} else if (!strcmp(m, "BODY")) {
 		FILE *f;
 		char s[8192];
 
 		if ((f = fopen(e->fn, "r")) == NULL) {
-			dprintf("render_front_story: fopen: %s: %s<br>\n",
+			d_printf("render_front_story: fopen: %s: %s<br>\n",
 			    e->fn, strerror(errno));
 			return;
 		}
 		int line = 0;
 		while (fgets(s, sizeof(s), f)) {
 			if(line)
-				dprintf("%s", s);
+				d_printf("%s", s);
 			line++;
 		}
 		fclose(f);
 	} else
-		dprintf("render_front_story: unknown macro '%s'<br>\n", m);
+		d_printf("render_front_story: unknown macro '%s'<br>\n", m);
 }
 
 static void
@@ -273,19 +321,19 @@ find_articles(const char *path, struct entry *a, int size)
 	fts = fts_open(path_argv, FTS_LOGICAL,
 	    compare_name_des_fts);
 	if (fts == NULL) {
-		dprintf("fts_open: %s: %s<br>\n", path, strerror(errno));
+		d_printf("fts_open: %s: %s<br>\n", path, strerror(errno));
 		return;
 	} else if ((e = fts_read(fts)) == NULL || !(e->fts_info & FTS_D)) {
-		dprintf("fts_read: %s: %s<br>\n", path, strerror(errno));
+		d_printf("fts_read: %s: %s<br>\n", path, strerror(errno));
 		return;
 	} else if ((e = fts_children(fts, FTS_NAMEONLY)) == NULL) {
 		if (errno != 0)
-			dprintf("fts_children: %s: %s<br>\n",
+			d_printf("fts_children: %s: %s<br>\n",
 			    path, strerror(errno));
 		return;
 	}
 
-/* prasing query string */
+/* parsing query string */
 	if(q->query_string != NULL) {
 		pos = q->query_string;
 		
@@ -307,6 +355,11 @@ find_articles(const char *path, struct entry *a, int size)
 	//printf("article - %s\n", article);
 	/* If there is parent but not article selected then show only index.txt content. 
 	   If the main directory should be shown then show all *.txt files in the current directory. */
+	// if rss generate rss from main directory
+	if(!(strncmp(parent, "rss", 3))) {
+		parent[0] = 0;
+		rss_request = 1;
+	}
 	if(parent[0] && !article[0])
 		strlcpy(article, "index.txt", sizeof(article));
 	while((( e = fts_read(fts)) != NULL) && (i < size)) {
@@ -352,12 +405,8 @@ read_file(struct entry *e)
 	struct stat file;
 
 	e->name[0] = e->parent[0] = e->title[0] = 0;
-//	e->pubdate = 0;
 	if ((f = fopen(e->fn, "r")) == NULL)
 		return (1);
-
-//	if ((stat(e->fn, &file)) != -1)
-//		e->pubdate = file.st_birthtime;
 
 	fgets(s, sizeof(s), f);
 	if (s[0]) {
@@ -487,7 +536,7 @@ convert_rfc822_time(const char *date)
 
 int main(int argc, char *argv[])
 {
-	const char *action, *s;
+	const char *s;
 	static struct timeval tx;
 	time_t if_modified_since = 0;
 	int i;
@@ -584,11 +633,6 @@ int main(int argc, char *argv[])
 		fflush(stdout);
 		return (0);
 	}
-	
-	mode = get_query_param(q, "mode");
-
-	if ((action = get_query_param(q, "action")) == NULL)
-		action = "front";
 
 	if ((s = getenv("IF_MODIFIED_SINCE")) != NULL) {
 		if_modified_since = convert_rfc822_time(s);
@@ -611,25 +655,22 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	const char *d = get_query_param(q, "date");
-	unsigned long long date = 0;
 	char fn[1024];
 	struct entry e;
 	
-	if (d != NULL) {
-		char e[9];
-
-		strlcpy(e, d, sizeof(e));
-		date = strtoull(e, NULL, 10) * 1000000;
-	}
-
 	strlcpy(fn, datadir, sizeof(fn));
 	find_articles(fn, newest, 10);
 	printf("%s\r\n\r\n", ct_html);
 	fflush(stdout);
-	snprintf(fn, sizeof(fn), "%s/main.html", htmldir);
-	memset(&e, 0, sizeof(e));
-	render_html(fn, &render_front, &e);
+	if(rss_request) {
+		snprintf(fn, sizeof(fn), "%s/summary.rss", htmldir);
+		memset(&e, 0, sizeof(e));
+		render_html(fn, &render_rss, &e);
+	} else {
+		snprintf(fn, sizeof(fn), "%s/main.html", htmldir);
+		memset(&e, 0, sizeof(e));
+		render_html(fn, &render_front, &e);
+	}
 
 done:
 	if (gz != NULL) {

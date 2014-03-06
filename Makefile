@@ -1,4 +1,4 @@
-CC=gcc -Wall -Wstrict-prototypes -g -O0 -static
+CC=cc -Wall -Wstrict-prototypes -g -O0 -static
 CHROOT=/data/www_SSL
 DATA=/opt/nlist
 WEB=/koue.chaosophia.net
