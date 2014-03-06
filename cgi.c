@@ -1,8 +1,8 @@
-/*	cgi.c,v 1.0 2011/12/13 koue					*/
+/*	cgi.c,v 1.1 2014/03/06 koue					*/
 
 /*
  * Copyright (c) 2004 Daniel Hartmeier. All rights reserved.
- * Copyright (c) 2011 Nikola Kolev. All right reserved.
+ * Copyright (c) 2011-2014 Nikola Kolev. All right reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -192,7 +192,9 @@ get_query(void)
 		q->query_string = strdup(e);
 		tokenize_query_params(q->query_string, &q->params);
 	}
-	if ((e = getenv("REMOTE_ADDR")) != NULL)
+	if ((e = getenv("X-Forwarded-For")) != NULL)
+		q->remote_addr = strdup(e);
+	else if ((e = getenv("REMOTE_ADDR")) != NULL)
 		q->remote_addr = strdup(e);
 	if ((e = getenv("HTTP_USER_AGENT")) != NULL)
 		q->user_agent = strdup(e);
