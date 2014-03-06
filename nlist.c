@@ -315,7 +315,7 @@ find_articles(const char *path, struct entry *a, int size)
 	FTSENT *e;
 	char * const path_argv[] = { (char*)path, NULL };
 	int i = 0;
-	char *tmp, *pos, article[128], parent[128];
+	char *tmp, *pos, article[128], parent[128], query[256];
 
 	parent[0] = article[0] = 0;
 
@@ -337,7 +337,9 @@ find_articles(const char *path, struct entry *a, int size)
 
 /* parsing query string */
 	if(q->query_string != NULL) {
-		pos = q->query_string;
+		snprintf(query, sizeof(query), "%s", q->query_string);
+	//	pos = q->query_string;
+		pos = query;
 		
 		while ((tmp = strsep(&pos, "/")) != NULL) {
 			if(strlen(tmp)) {
@@ -663,7 +665,8 @@ int main(int argc, char *argv[])
 	find_articles(fn, newest, 10);
 	printf("%s\r\n\r\n", ct_html);
 	fflush(stdout);
-	if(rss_request) {
+	//if(rss_request) {
+	if(q->query_string != NULL && !strncmp(q->query_string, "/rss", 4)) {
 		snprintf(fn, sizeof(fn), "%s/summary.rss", htmldir);
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_rss, &e);
@@ -680,7 +683,8 @@ done:
 		gz = NULL;
 	} else
 		fflush(stdout);
-	msg("total %.1f ms query [%s]", timelapse(&tx), q == NULL || !q->query_string[0] ? "" : q->query_string);
+	//msg("total %.1f ms query [%s]", timelapse(&tx), q == NULL || !q->query_string[0] ? "" : q->query_string);
+	msg("total %.1f ms query [%s]", timelapse(&tx), q == NULL ? "" : q->query_string);
 	if (q != NULL)
 		free_query(q);
 	return (0);
