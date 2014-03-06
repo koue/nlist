@@ -47,6 +47,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
+#include <ctype.h>
 
 #include "conf.h"
 #include "cgi.h"
@@ -101,6 +102,7 @@ static int	 compare_name_des_fts(const FTSENT **a, const FTSENT **b);
 static const char *rfc822_time(time_t t);
 void		 msg(const char *fmt, ...);
 void		 chomp(char *s);
+static int 	excluded(const char *name); 
 
 static double
 timelapse(struct timeval *t)
@@ -402,7 +404,6 @@ read_file(struct entry *e)
 {
 	FILE *f;
 	char s[8192], fn[MAXNAMLEN + 1], *p;
-	struct stat file;
 
 	e->name[0] = e->parent[0] = e->title[0] = 0;
 	if ((f = fopen(e->fn, "r")) == NULL)
@@ -679,9 +680,7 @@ done:
 		gz = NULL;
 	} else
 		fflush(stdout);
-	// should fix this
-	// pid 33258 (index.cgi), uid 80: exited on signal 11
-	//msg("total %.1f ms query [%s]", timelapse(&tx), q == NULL || !q->query_string[0] ? "" : q->query_string);
+	msg("total %.1f ms query [%s]", timelapse(&tx), q == NULL || !q->query_string[0] ? "" : q->query_string);
 	if (q != NULL)
 		free_query(q);
 	return (0);
@@ -714,7 +713,7 @@ msg(const char *fmt, ...)
 	fclose(f);
 }
 
-int
+static int
 excluded(const char *name) {
 	FILE *f;
 	char s[8192], *p;
