@@ -1,9 +1,6 @@
-/* 	nlist.c, v 1.1 2014/03/06 koue 					*/
-
 /*
- *
+ * Copyright (c) 2011-2018 Nikola Kolev <koue@chaosophia.net>
  * Copyright (c) 2004-2006 Daniel Hartmeier. All rights reserved.
- * Copyright (c) 2011-2014 Nikola Kolev. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -49,42 +46,33 @@
 #include <zlib.h>
 #include <ctype.h>
 
-#include "conf.h"
-#include "cgi.h"
+#include <cez-config.h>
 
 struct entry {
         char                     fn[MAXNAMLEN + 1];	/* absolute path of the file		*/
-        unsigned long long       pubdate;		/* date of publication			*/
+        //unsigned long long       pubdate;		/* date of publication			*/
+        time_t       pubdate;		/* date of publication			*/
         char                     name[64];		/* name of the article 		 	*/
 	char			 parent[64];		/* parent directory ot the article	*/
         char                     title[128];		/* first line of the article		*/
 };
 
-static const char	*conffile = "/opt/nlist/koue.chaosophia.net/cgi.conf";
-static const char	*corefile = "/opt/nlist/koue.chaosophia.net/cgi.core";
-static char		 domain[MAXPATHLEN];
-static char		 datadir[MAXPATHLEN];
-static char		 htmldir[MAXPATHLEN];
-static char		 logfile[MAXPATHLEN];
-static char		 excludefile[MAXPATHLEN];
-static char		 baseurl[MAXPATHLEN];
-static char		 ct_html[MAXPATHLEN];
-static char		 mailaddr[MAXPATHLEN];
-struct conf confentries[] = {
-	{ "domain", domain },
-	{ "datadir", datadir },
-	{ "htmldir", htmldir },
-	{ "logfile", logfile },
-	{ "excludefile", excludefile },
-	{ "baseurl", baseurl },
-	{ "ct_html", ct_html },
-	{ "mailaddr", mailaddr },
-	{ NULL, NULL }
+static const char	*conffile = "/opt/nlist/koue.chaosophia.net/nlist.conf";
+static const char	*corefile = "/opt/nlist/koue.chaosophia.net/nlist.core";
+
+struct conf {
+	char *datadir;
+	char *htmldir;
+	char *logfile;
+	char *excludefile;
+	char *baseurl;
+	char *ct_html;
 };
-static struct query	*q = NULL;
+
+static struct conf	nlist;
+
 static struct entry	 newest[64];	/* 9 front, 9 weeklist */
 static gzFile		 gz = NULL;
-static int		rss_request = 0;
 
 typedef	void (*render_cb)(const char *, const struct entry *);
 
@@ -102,7 +90,7 @@ static int	 compare_name_des_fts(const FTSENT **a, const FTSENT **b);
 static const char *rfc822_time(time_t t);
 void		 msg(const char *fmt, ...);
 void		 chomp(char *s);
-static int 	excluded(const char *name); 
+static int 	excluded(const char *name);
 
 static double
 timelapse(struct timeval *t)
@@ -142,32 +130,16 @@ static void
 render_error(const char *fmt, ...)
 {
 	va_list ap;
-	char s[8192], e[8192];
+	char s[8192];
 
 	va_start(ap, fmt);
 	vsnprintf(s, sizeof(s), fmt, ap);
 	va_end(ap);
-	printf("%s\r\n\r\n", ct_html);
+	printf("%s\r\n\r\n", nlist.ct_html);
 	fflush(stdout);
 	d_printf("<html><head><title>Error</title></head><body>\n");
 	d_printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
-	if (q != NULL) {
-		d_printf("Request: <b>%s</b><br>\n",
-		    html_esc(q->query_string, e, sizeof(e), 0));
-		d_printf("Address: <b>%s</b><br>\n",
-		    html_esc(q->remote_addr, e, sizeof(e), 0));
-		if (q->user_agent != NULL)
-			d_printf("User agent: <b>%s</b><br>\n",
-			    html_esc(q->user_agent, e, sizeof(e), 0));
-		if (q->referer != NULL)
-			d_printf("Referer: <b>%s</b><br>\n",
-			    html_esc(q->referer, e, sizeof(e), 0));
-	}
 	d_printf("Time: <b>%s</b><br>\n", rfc822_time(time(0)));
-	d_printf("<p>If you believe this is a bug in <i>this</i> server, "
-	    "please send reports with instructions about how to "
-	    "reproduce to <a href=\"mailto:%s\"><b>%s</b></a><p>\n",
-	    mailaddr, mailaddr);
 	d_printf("</body></html>\n");
 }
 
@@ -191,9 +163,9 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 			if ((b = strstr(a, "%%")) != NULL) {
 				*b = 0;
 				if (!strcmp(a, "BASEURL"))
-					d_printf("%s", baseurl);
+					d_printf("%s", nlist.baseurl);
 				else if (!strcmp(a, "CTYPE"))
-					d_printf("%s", ct_html);
+					d_printf("%s", nlist.ct_html);
 				else if (r != NULL)
 					(*r)(a, e);
 				a = b + 2;
@@ -211,10 +183,9 @@ render_rss(const char *m, const struct entry *e)
 	if (!strcmp(m, "ITEMS")) {
 		char fn[1024];
 		int i;
-		snprintf(fn, sizeof(fn), "%s/summary_item.rss", htmldir);
-		for (i = 0; newest[i].name[0]; ++i) 
+		snprintf(fn, sizeof(fn), "%s/summary_item.rss", nlist.htmldir);
+		for (i = 0; newest[i].name[0]; ++i)
 			render_html(fn, &render_rss_item, &newest[i]);
-		
 	} else
 		d_printf("render_rss: unknown macro '%s'\n", m);
 }
@@ -227,12 +198,12 @@ render_rss_item(const char *m, const struct entry *e)
 	if (!strcmp(m, "TITLE")) {
 		d_printf("%s", html_esc(e->title, d, sizeof(d), 0));
 	} else if (!strcmp(m, "LINK")) {
-		d_printf("%s/%s.html", baseurl, e->name);
+		d_printf("%s/%s.html", nlist.baseurl, e->name);
 	} else if (!strcmp(m, "DATE")) {
 		d_printf("%s", ctime(&e->pubdate));
 	} else if (!strcmp(m, "BODY")) {
 		FILE *f;
-		char s[8192], fn[8192];
+		char s[8192];
 
 		if ((f = fopen(e->fn, "r")) == NULL) {
 			d_printf("render_rss_item: fopen %s: %s\n",
@@ -258,15 +229,15 @@ render_front(const char *m, const struct entry *e)
 	int i;
 
 	if (!strcmp(m, "STORY")) {
-		snprintf(fn, sizeof(fn), "%s/story.html", htmldir);
+		snprintf(fn, sizeof(fn), "%s/story.html", nlist.htmldir);
 		for (i = 0; newest[i].name[0]; ++i) {
 			render_html(fn, &render_front_story, &newest[i]);
 		}
 	} else if (!strcmp(m, "HEADER")) {
-		snprintf(fn, sizeof(fn), "%s/header.html", htmldir);
+		snprintf(fn, sizeof(fn), "%s/header.html", nlist.htmldir);
 		render_html(fn, NULL, NULL);
 	} else if (!strcmp(m, "FOOTER")) {
-		snprintf(fn, sizeof(fn), "%s/footer.html", htmldir);
+		snprintf(fn, sizeof(fn), "%s/footer.html", nlist.htmldir);
 		render_html(fn, NULL, NULL);
 	} else
 		d_printf("render_front: unknown macro '%s'<br>\n", m);
@@ -283,7 +254,7 @@ render_front_story(const char *m, const struct entry *e)
 	} else if (!strcmp(m, "DATE")) {
 		d_printf("%s", ctime(&e->pubdate));
 	} else if (!strcmp(m, "BASEURL")) {
-		d_printf("%s", baseurl);
+		d_printf("%s", nlist.baseurl);
 	} else if (!strcmp(m, "ARTICLE")) {
 		if (e->parent[0])
 			d_printf("%s/", e->parent);
@@ -326,7 +297,7 @@ find_articles(const char *path, struct entry *a, int size)
 		d_printf("fts_open: %s: %s<br>\n", path, strerror(errno));
 		return;
 	} else if ((e = fts_read(fts)) == NULL || !(e->fts_info & FTS_D)) {
-		d_printf("fts_read: %s: %s<br>\n", path, strerror(errno));
+		d_printf("fts_read: fts_info %s: %s<br>\n", path, strerror(errno));
 		return;
 	} else if ((e = fts_children(fts, FTS_NAMEONLY)) == NULL) {
 		if (errno != 0)
@@ -336,11 +307,10 @@ find_articles(const char *path, struct entry *a, int size)
 	}
 
 /* parsing query string */
-	if(q->query_string != NULL) {
-		snprintf(query, sizeof(query), "%s", q->query_string);
-	//	pos = q->query_string;
+//	if(q->query_string != NULL) {
+	if((tmp = getenv("QUERY_STRING")) != NULL) {
+		snprintf(query, sizeof(query), "%s", tmp);
 		pos = query;
-		
 		while ((tmp = strsep(&pos, "/")) != NULL) {
 			if(strlen(tmp)) {
 				if(strstr(tmp, ".html") != NULL) {
@@ -355,23 +325,19 @@ find_articles(const char *path, struct entry *a, int size)
 		}
 	}
 
-	//printf("parent - %s\n", parent);
-	//printf("article - %s\n", article);
-	/* If there is parent but not article selected then show only index.txt content. 
-	   If the main directory should be shown then show all *.txt files in the current directory. */
-	// if rss generate rss from main directory
+	/*
+	If there is parent but not article selected then show only index.txt content.
+	If the main directory should be shown then show all *.txt files in the current directory.
+	*/
+	/* if rss generate rss from main directory */
 	if(!(strncmp(parent, "rss", 3))) {
 		parent[0] = 0;
-		rss_request = 1;
 	}
 	if(parent[0] && !article[0])
 		strlcpy(article, "index.txt", sizeof(article));
 	while((( e = fts_read(fts)) != NULL) && (i < size)) {
-		if ((e->fts_info & FTS_F) 
-			//&& ((parent == NULL) || !(strcmp(parent, e->fts_parent->fts_name)))
-			//&& ((!(strlen(parent)) && !(strcmp(e->fts_parent->fts_name, "data"))) || !(strcmp(parent, e->fts_parent->fts_name)))
+		if ((e->fts_info & FTS_F)
 			&& ((!(strlen(parent)) && (e->fts_level == 1)) || !(strcmp(parent, e->fts_parent->fts_name)))
-			//&& ((article == NULL) || !(strcmp(article, e->fts_name)))
 			&& ((!(strlen(article)) && !excluded(e->fts_path)) || !(strcmp(article, e->fts_name)))
 			&& (e->fts_name[strlen(e->fts_name)-1] == 't')
 			&& (e->fts_name[strlen(e->fts_name)-2] == 'x')
@@ -391,7 +357,6 @@ find_articles(const char *path, struct entry *a, int size)
 			while(*pos && *pos != '.')
 				pos++;
 			*pos = 0;
-			
 			strlcpy(a[i].name, e->fts_name, sizeof(a[i].name));
 			a[i].pubdate = e->fts_statp->st_mtime;
 
@@ -537,23 +502,51 @@ convert_rfc822_time(const char *date)
 	return (t);
 }
 
+int load_config(void)
+{
+	if ((nlist.datadir = config_queue_value_get("datadir")) == NULL) {
+		render_error("datadir is missing");
+		return (-1);
+	}
+	if ((nlist.htmldir = config_queue_value_get("htmldir")) == NULL) {
+		render_error("htmldir is missing");
+		return (-1);
+	}
+	if ((nlist.logfile = config_queue_value_get("logfile")) == NULL) {
+		render_error("logfile is missing");
+		return (-1);
+	}
+	if ((nlist.excludefile = config_queue_value_get("excludefile")) == NULL ) {
+		render_error("excludefile is missing");
+		return (-1);
+	}
+	if ((nlist.baseurl = config_queue_value_get("baseurl")) == NULL) {
+		render_error("baseurl is missing");
+		return (-1);
+	}
+	if ((nlist.ct_html = config_queue_value_get("ct_html")) == NULL) {
+		render_error("ct_html is missing");
+		return (-1);
+	}
+	return (0);
+}
+
 int main(int argc, char *argv[])
 {
 	const char *s;
 	static struct timeval tx;
 	time_t if_modified_since = 0;
-	int i;
+	int i, query = 0;
 
 	gettimeofday(&tx, NULL);
 	umask(007);
-	if (load_conf(conffile, confentries)) {
-		char cwd[MAXPATHLEN];
-
-		msg("error load_conf: cwd '%s' file '%s'", cwd, conffile);
-		render_error("load_conf: cwd '%s' file '%s'",
-		    getcwd(cwd, MAXPATHLEN), conffile);
+	if (configfile_parse(conffile, config_queue_cb) == -1) {
+		msg("error load_conf: file '%s'", conffile);
+		render_error("load_conf: file '%s'", conffile);
 		goto done;
 	}
+	if (load_config() == -1)
+		goto done;
 	if (chdir("/tmp")) {
 		msg("error main: chdir: /tmp: %s", strerror(errno));
 		render_error("chdir: /tmp: %s", strerror(errno));
@@ -581,34 +574,26 @@ int main(int argc, char *argv[])
 				    corefile, fn);
 		}
 	}
-	if ((q = get_query()) == NULL) {
-		render_error("get_query");
-		msg("error main: get_query() NULL");
-		goto done;
-	}
 	if ((s = getenv("QUERY_STRING")) != NULL) {
+		query = 1;
 		if (strlen(s) > 64) {
 			printf("Status: 400\r\n\r\n You are trying to send very long query!\n");
 			fflush(stdout);
 			return (0);
 
 		} else if (strstr(s, "&amp;") != NULL) {
-			msg("warning main: escaped query '%s', user agent '%s', "
-			    "referer '%s'", s,
-			    q->user_agent ? q->user_agent : "(null)",
-			    q->referer ? q->referer : "(null)");
+			msg("warning main: escaped query '%s'", s);
 			printf("Status: 400\r\n\r\nHTML escaped ampersand in cgi "
-			    "query string \"%s\"\n"
-			    "This might be a problem in your client \"%s\",\n"
-			    "or in the referring document \"%s\"\n"
-			    "See http://www.htmlhelp.org/tools/validator/problems.html"
-			    "#amp\n", s, q->user_agent ? q->user_agent : "",
-			    q->referer ? q->referer : "");
+			    "query string \"%s\"\n", s);
 			fflush(stdout);
 			return (0);
 		} else {
 			for (i = 0; i < strlen(s); i++) {
-				/* sanity check of the query string, accepts only alpha, '/' and '_' and '.' if its on 5 position before the end of the string
+				/*
+				sanity check of the query string, accepts
+				only alpha, '/' and '_' and '.' if its on 5
+				position before the end of the string
+
 					Correct: /follow/this/path/
 						 /or/this/
 						 /and/this/if/its/single/article.html
@@ -621,20 +606,7 @@ int main(int argc, char *argv[])
         	                        return (0);
                 	        }
                 	}
-		}	
-	}
-
-	if ((q->referer != NULL && strstr(q->referer, "morisit")) ||
-	    (s != NULL && strstr(s, "http://"))) {
-		printf("Status: 503\r\n\r\nWe are not redirecting, "
-		    "nice try.\n");
-		fflush(stdout);
-		return (0);
-	}
-	if (q->user_agent != NULL && !strncmp(q->user_agent, "Googlebot", 9)) {
-		printf("Status: 503\r\n\r\nGooglebot you are not.\n");
-		fflush(stdout);
-		return (0);
+		}
 	}
 
 	if ((s = getenv("IF_MODIFIED_SINCE")) != NULL) {
@@ -660,18 +632,16 @@ int main(int argc, char *argv[])
 
 	char fn[1024];
 	struct entry e;
-	
-	strlcpy(fn, datadir, sizeof(fn));
+	strlcpy(fn, nlist.datadir, sizeof(fn));
 	find_articles(fn, newest, 10);
-	printf("%s\r\n\r\n", ct_html);
+	printf("%s\r\n\r\n", nlist.ct_html);
 	fflush(stdout);
-	//if(rss_request) {
-	if(q->query_string != NULL && !strncmp(q->query_string, "/rss", 4)) {
-		snprintf(fn, sizeof(fn), "%s/summary.rss", htmldir);
+	if(query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
+		snprintf(fn, sizeof(fn), "%s/summary.rss", nlist.htmldir);
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_rss, &e);
 	} else {
-		snprintf(fn, sizeof(fn), "%s/main.html", htmldir);
+		snprintf(fn, sizeof(fn), "%s/main.html", nlist.htmldir);
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_front, &e);
 	}
@@ -683,10 +653,8 @@ done:
 		gz = NULL;
 	} else
 		fflush(stdout);
-	//msg("total %.1f ms query [%s]", timelapse(&tx), q == NULL || !q->query_string[0] ? "" : q->query_string);
-	msg("total %.1f ms query [%s]", timelapse(&tx), q == NULL ? "" : q->query_string);
-	if (q != NULL)
-		free_query(q);
+	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
+	config_queue_purge();
 	return (0);
 }
 
@@ -698,17 +666,16 @@ msg(const char *fmt, ...)
 	time_t t = time(NULL);
 	struct tm *tm = gmtime(&t);
 
-	if (!logfile[0] || (f = fopen(logfile, "a")) == NULL)
+	if (!nlist.logfile || (f = fopen(nlist.logfile, "a")) == NULL)
 	{
-		printf("CANNOT open logfile\n");
+		fprintf(stderr, "%s: cannot open logfile: %s\n", __func__,
+								nlist.logfile);
 		return;
 	}
 	fprintf(f, "%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d %s %s\tcgi[%u] ",
 	    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-	    tm->tm_hour, tm->tm_min, tm->tm_sec,
-	    q == NULL || !q->remote_addr[0] ? "-" : q->remote_addr,
-	    "-" ,
-	    (unsigned)getpid()); 
+	    tm->tm_hour, tm->tm_min, tm->tm_sec, getenv("REMOTE_ADDR"), "-" ,
+	    (unsigned)getpid());
 	va_start(ap, fmt);
 	vfprintf(f, fmt, ap);
 	va_end(ap);
@@ -722,7 +689,7 @@ excluded(const char *name) {
 	FILE *f;
 	char s[8192], *p;
 
-	if (( f = fopen(excludefile, "r")) == NULL) {
+	if (( f = fopen(nlist.excludefile, "r")) == NULL) {
 		msg("Cannot open exclude file.\n");
 		return 0;
 	}
@@ -732,7 +699,7 @@ excluded(const char *name) {
 			fclose(f);
 			return 1;
 		}
-	}	
+	}
 	fclose(f);
 	return 0;
 }
@@ -740,6 +707,5 @@ excluded(const char *name) {
 void
 chomp(char *s) {
     while(*s && *s != '\n' && *s != '\r') s++;
- 
     *s = 0;
 }
