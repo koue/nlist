@@ -46,12 +46,11 @@
 #include <zlib.h>
 #include <ctype.h>
 
-#include <cez-config.h>
+#include <cez_config.h>
 
 struct entry {
         char                     fn[MAXNAMLEN + 1];	/* absolute path of the file		*/
-        //unsigned long long       pubdate;		/* date of publication			*/
-        time_t       pubdate;		/* date of publication			*/
+        time_t       pubdate;				/* date of publication			*/
         char                     name[64];		/* name of the article 		 	*/
 	char			 parent[64];		/* parent directory ot the article	*/
         char                     title[128];		/* first line of the article		*/
