@@ -1,13 +1,14 @@
-CC=cc -Wall -Wstrict-prototypes -g -O0 -static
-CHROOT=/data/www
-DATA=/opt/nlist
-WEB=/koue.chaosophia.net
-CGI=index.cgi
+#
+CFLAGS+=	-Wall -Wstrict-prototypes -g -O0 -static -I/usr/local/include
+CHROOT=		/usr/local/www/nlist
+DATA=		/data
+WEB=		/www
+CGI=		index.cgi
 
 all: nlist
 
 nlist: nlist.c
-	$(CC) -o nlist nlist.c -lz /usr/lib/libcezconfig.a
+	$(CC) $(CFLAGS) -o nlist nlist.c -lz /usr/local/lib/libcezconfig.a
 
 clean:
 	rm -f nlist *.core
