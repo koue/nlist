@@ -1,0 +1,25 @@
+# $FreeBSD$
+
+PORTNAME=	nlist
+PORTVERSION=	0.1
+CATEGORIES=	www
+
+MAINTAINER=	koue@chaosophia.net
+COMMENT=	Simple blog written in c inspired by blosxom and undeadly.org
+
+LICENSE=	BSD2CLAUSE
+
+CEZ_VERSION=	1.01
+USE_GITHUB=	yes
+GH_ACCOUNT=	koue
+GH_PROJECT=	nlist:nlist \
+		libcez:libcez
+GH_TAGNAME=	${CEZ_VERSION}:libcez
+
+pre-configure:
+	@(cd ${WRKDIR}/libcez-${CEZ_VERSION} && ${SETENV} ${MAKE_ENV} ${MAKE})
+	${REINPLACE_CMD} -e 's|/usr/local/include|${WRKDIR}/libcez-${CEZ_VERSION}/src/config|g' \
+			 -e 's|/usr/local/lib|${WRKDIR}/libcez-${CEZ_VERSION}/src/config|g' \
+		${WRKSRC}/Makefile
+
+.include <bsd.port.mk>
