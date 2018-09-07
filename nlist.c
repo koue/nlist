@@ -56,8 +56,8 @@ struct entry {
         char                     title[128];		/* first line of the article		*/
 };
 
-static const char	*conffile = "/opt/nlist/koue.chaosophia.net/nlist.conf";
-static const char	*corefile = "/opt/nlist/koue.chaosophia.net/nlist.core";
+static const char	*conffile = "/opt/koue.chaosophia.net/nlist/nlist.conf";
+static const char	*corefile = "/opt/koue.chaosophia.net/nlist/nlist.core";
 
 struct conf {
 	char *datadir;
