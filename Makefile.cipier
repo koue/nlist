@@ -17,7 +17,7 @@ GH_PROJECT=	nlist:nlist \
 GH_TAGNAME=	${CEZ_VERSION}:libcez
 
 pre-configure:
-	@(cd ${WRKDIR}/libcez-${CEZ_VERSION} && ${SETENV} ${MAKE_ENV} ${MAKE})
+	@(cd ${WRKSRC_libcez}/src/config && ${SETENV} ${MAKE_ENV} ${MAKE})
 	${REINPLACE_CMD} -e 's|/usr/local/include|${WRKDIR}/libcez-${CEZ_VERSION}/src/config|g' \
 			 -e 's|/usr/local/lib|${WRKDIR}/libcez-${CEZ_VERSION}/src/config|g' \
 		${WRKSRC}/Makefile
