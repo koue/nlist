@@ -299,7 +299,7 @@ find_articles(const char *path, struct entry *a, int size)
 	if (fts == NULL) {
 		d_printf("fts_open: %s: %s<br>\n", path, strerror(errno));
 		return;
-	} else if ((e = fts_read(fts)) == NULL || !(e->fts_info & FTS_D)) {
+	} else if ((e = fts_read(fts)) == NULL || (e->fts_info != FTS_D)) {
 		d_printf("fts_read: fts_info %s: %s<br>\n", path,
 							strerror(errno));
 		return;
@@ -344,7 +344,7 @@ find_articles(const char *path, struct entry *a, int size)
 		strlcpy(article, "index.txt", sizeof(article));
 	}
 	while ((( e = fts_read(fts)) != NULL) && (i < size)) {
-		if ((e->fts_info & FTS_F)
+		if ((e->fts_info == FTS_F)
 			&& ((!(strlen(parent)) && (e->fts_level == 1)) || !(strcmp(parent, e->fts_parent->fts_name)))
 			&& ((!(strlen(article)) && !excluded(e->fts_path)) || !(strcmp(article, e->fts_name)))
 			&& (e->fts_name[strlen(e->fts_name)-1] == 't')
@@ -481,33 +481,10 @@ rfc822_time(time_t t)
 static time_t
 convert_rfc822_time(const char *date)
 {
-	const char *mns[13] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul",
-	    "Aug", "Sep", "Oct", "Nov", "Dec", NULL };
-	char wd[4], mn[4], zone[16];
-	int d, h, m, s, y, i;
 	struct tm tm;
 	time_t t;
 
-	if (sscanf(date, "%3s, %d %3s %d %d:%d:%d %15s",
-	    wd, &d, mn, &y, &h, &m, &s, zone) != 8) {
-		return (0);
-	}
-	for (i = 0; mns[i] != NULL; ++i) {
-		if (strcmp(mns[i], mn) == 0) {
-			break;
-		}
-	}
-	if (mns[i] == NULL) {
-		return (0);
-	}
-	memset(&tm, 0, sizeof(tm));
-	tm.tm_year = y - 1900;
-	tm.tm_mon = i;
-	tm.tm_mday = d;
-	tm.tm_hour = h;
-	tm.tm_min = m;
-	tm.tm_sec = s;
-	tm.tm_zone = zone;
+	strptime(date, "%a, %e %h %Y %H:%M:%S %z", &tm);
 	t = mktime(&tm);
 	return (t);
 }
@@ -611,7 +588,7 @@ main(void)
 
 	if ((s = getenv("IF_MODIFIED_SINCE")) != NULL) {
 		if_modified_since = convert_rfc822_time(s);
-		if (!if_modified_since) {
+		if (if_modified_since <= 0) {
 			if_modified_since =
 			    (time_t)strtoul(s, NULL, 10);
 		}
@@ -623,7 +600,7 @@ main(void)
 		char *p = strstr(s, "gzip");
 
 		if (p != NULL && ((strncmp(p, "gzip;q=0", 8) != 0) ||
-		    atoi(p + 7) > 0.0)) {
+		    strtol(p + 7, (char **)NULL, 10) > 0.0)) {
 			gz = gzdopen(fileno(stdout), "wb9");
 			if (gz == NULL) {
 				msg("error main: gzdopen");
