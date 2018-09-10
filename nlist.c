@@ -48,6 +48,8 @@
 
 #include <cez_config.h>
 
+#define cnf_lookup config_queue_value_get
+
 struct entry {
         char                     fn[MAXNAMLEN + 1];	/* absolute path of the file		*/
         time_t       pubdate;				/* date of publication			*/
@@ -58,17 +60,6 @@ struct entry {
 
 static const char	*conffile = "/opt/koue.chaosophia.net/nlist/nlist.conf";
 static const char	*corefile = "/opt/koue.chaosophia.net/nlist/nlist.core";
-
-struct conf {
-	char *datadir;
-	char *htmldir;
-	char *logfile;
-	char *excludefile;
-	char *baseurl;
-	char *ct_html;
-};
-
-static struct conf	nlist;
 
 static struct entry	 newest[64];	/* 9 front, 9 weeklist */
 static gzFile		 gz = NULL;
@@ -134,7 +125,7 @@ render_error(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(s, sizeof(s), fmt, ap);
 	va_end(ap);
-	printf("%s\r\n\r\n", nlist.ct_html);
+	printf("%s\r\n\r\n", cnf_lookup("ct_html"));
 	fflush(stdout);
 	d_printf("<html><head><title>Error</title></head><body>\n");
 	d_printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
@@ -162,9 +153,9 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 			if ((b = strstr(a, "%%")) != NULL) {
 				*b = 0;
 				if (!strcmp(a, "BASEURL"))
-					d_printf("%s", nlist.baseurl);
+					d_printf("%s", cnf_lookup("baseurl"));
 				else if (!strcmp(a, "CTYPE"))
-					d_printf("%s", nlist.ct_html);
+					d_printf("%s", cnf_lookup("ct_html"));
 				else if (r != NULL)
 					(*r)(a, e);
 				a = b + 2;
@@ -182,7 +173,7 @@ render_rss(const char *m, const struct entry *e)
 	if (!strcmp(m, "ITEMS")) {
 		char fn[1024];
 		int i;
-		snprintf(fn, sizeof(fn), "%s/summary_item.rss", nlist.htmldir);
+		snprintf(fn, sizeof(fn), "%s/summary_item.rss", cnf_lookup("htmldir"));
 		for (i = 0; newest[i].name[0]; ++i)
 			render_html(fn, &render_rss_item, &newest[i]);
 	} else
@@ -197,7 +188,7 @@ render_rss_item(const char *m, const struct entry *e)
 	if (!strcmp(m, "TITLE")) {
 		d_printf("%s", html_esc(e->title, d, sizeof(d), 0));
 	} else if (!strcmp(m, "LINK")) {
-		d_printf("%s/%s.html", nlist.baseurl, e->name);
+		d_printf("%s/%s.html", cnf_lookup("baseurl"), e->name);
 	} else if (!strcmp(m, "DATE")) {
 		d_printf("%s", ctime(&e->pubdate));
 	} else if (!strcmp(m, "BODY")) {
@@ -228,15 +219,15 @@ render_front(const char *m, const struct entry *e)
 	int i;
 
 	if (!strcmp(m, "STORY")) {
-		snprintf(fn, sizeof(fn), "%s/story.html", nlist.htmldir);
+		snprintf(fn, sizeof(fn), "%s/story.html", cnf_lookup("htmldir"));
 		for (i = 0; newest[i].name[0]; ++i) {
 			render_html(fn, &render_front_story, &newest[i]);
 		}
 	} else if (!strcmp(m, "HEADER")) {
-		snprintf(fn, sizeof(fn), "%s/header.html", nlist.htmldir);
+		snprintf(fn, sizeof(fn), "%s/header.html", cnf_lookup("htmldir"));
 		render_html(fn, NULL, NULL);
 	} else if (!strcmp(m, "FOOTER")) {
-		snprintf(fn, sizeof(fn), "%s/footer.html", nlist.htmldir);
+		snprintf(fn, sizeof(fn), "%s/footer.html", cnf_lookup("htmldir"));
 		render_html(fn, NULL, NULL);
 	} else
 		d_printf("render_front: unknown macro '%s'<br>\n", m);
@@ -253,7 +244,7 @@ render_front_story(const char *m, const struct entry *e)
 	} else if (!strcmp(m, "DATE")) {
 		d_printf("%s", ctime(&e->pubdate));
 	} else if (!strcmp(m, "BASEURL")) {
-		d_printf("%s", nlist.baseurl);
+		d_printf("%s", cnf_lookup("baseurl"));
 	} else if (!strcmp(m, "ARTICLE")) {
 		if (e->parent[0])
 			d_printf("%s/", e->parent);
@@ -482,13 +473,17 @@ convert_rfc822_time(const char *date)
 	time_t t;
 
 	if (sscanf(date, "%3s, %d %3s %d %d:%d:%d %15s",
-	    wd, &d, mn, &y, &h, &m, &s, zone) != 8)
+	    wd, &d, mn, &y, &h, &m, &s, zone) != 8) {
 		return (0);
-	for (i = 0; mns[i] != NULL; ++i)
-		if (!strcmp(mns[i], mn))
+	}
+	for (i = 0; mns[i] != NULL; ++i) {
+		if (!strcmp(mns[i], mn)) {
 			break;
-	if (mns[i] == NULL)
+		}
+	}
+	if (mns[i] == NULL) {
 		return (0);
+	}
 	memset(&tm, 0, sizeof(tm));
 	tm.tm_year = y - 1900;
 	tm.tm_mon = i;
@@ -501,36 +496,23 @@ convert_rfc822_time(const char *date)
 	return (t);
 }
 
-int load_config(void)
+int
+config_check(void)
 {
-	if ((nlist.datadir = config_queue_value_get("datadir")) == NULL) {
-		render_error("datadir is missing");
-		return (-1);
-	}
-	if ((nlist.htmldir = config_queue_value_get("htmldir")) == NULL) {
-		render_error("htmldir is missing");
-		return (-1);
-	}
-	if ((nlist.logfile = config_queue_value_get("logfile")) == NULL) {
-		render_error("logfile is missing");
-		return (-1);
-	}
-	if ((nlist.excludefile = config_queue_value_get("excludefile")) == NULL ) {
-		render_error("excludefile is missing");
-		return (-1);
-	}
-	if ((nlist.baseurl = config_queue_value_get("baseurl")) == NULL) {
-		render_error("baseurl is missing");
-		return (-1);
-	}
-	if ((nlist.ct_html = config_queue_value_get("ct_html")) == NULL) {
-		render_error("ct_html is missing");
-		return (-1);
+	const char *conf[] = { "datadir", "htmldir", "logfile", "excludefile",
+	    "baseurl", "ct_html", NULL };
+
+	for (int i = 0; conf[i] != NULL; ++i) {
+		if (cnf_lookup(conf[i]) == NULL) {
+			render_error("%s is missing", conf[i]);
+			return (-1);
+		}
 	}
 	return (0);
 }
 
-int main(int argc, char *argv[])
+int
+main(void)
 {
 	const char *s;
 	static struct timeval tx;
@@ -544,8 +526,9 @@ int main(int argc, char *argv[])
 		render_error("load_conf: file '%s'", conffile);
 		goto done;
 	}
-	if (load_config() == -1)
+	if (config_check() == -1) {
 		goto done;
+	}
 	if (chdir("/tmp")) {
 		msg("error main: chdir: /tmp: %s", strerror(errno));
 		render_error("chdir: /tmp: %s", strerror(errno));
@@ -554,10 +537,10 @@ int main(int argc, char *argv[])
 	if (!access(corefile, R_OK)) {
 		struct stat sb;
 
-		if (stat(corefile, &sb))
+		if (stat(corefile, &sb)) {
 			msg("error main: stat: %s: %s", corefile,
 			    strerror(errno));
-		else {
+		} else {
 			char fn[1024];
 			struct tm *tm = gmtime(&sb.st_mtime);
 
@@ -565,12 +548,13 @@ int main(int argc, char *argv[])
 			    "%s.%4.4d%2.2d%2.2d%2.2d%2.2d%2.2d", corefile,
 			    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
 			    tm->tm_hour, tm->tm_min, tm->tm_sec);
-			if (rename(corefile, fn))
+			if (rename(corefile, fn)) {
 				msg("error main: rename: %s: %s: %s", corefile,
 				    fn, strerror(errno));
-			else
+			} else {
 				msg("warning main: core file %s renamed to %s",
 				    corefile, fn);
+			}
 		}
 	}
 	if ((s = getenv("QUERY_STRING")) != NULL) {
@@ -610,11 +594,13 @@ int main(int argc, char *argv[])
 
 	if ((s = getenv("IF_MODIFIED_SINCE")) != NULL) {
 		if_modified_since = convert_rfc822_time(s);
-		if (!if_modified_since)
+		if (!if_modified_since) {
 			if_modified_since =
 			    (time_t)strtoul(s, NULL, 10);
-		if (!if_modified_since)
+		}
+		if (!if_modified_since) {
 			msg("warning main: invalid IF_MODIFIED_SINCE '%s'", s);
+		}
 	}
 	if ((s = getenv("HTTP_ACCEPT_ENCODING")) != NULL) {
 		char *p = strstr(s, "gzip");
@@ -622,36 +608,39 @@ int main(int argc, char *argv[])
 		if (p != NULL && (strncmp(p, "gzip;q=0", 8) ||
 		    atoi(p + 7) > 0.0)) {
 			gz = gzdopen(fileno(stdout), "wb9");
-			if (gz == NULL)
+			if (gz == NULL) {
 				msg("error main: gzdopen");
-			else
+			} else {
 				printf("Content-Encoding: gzip\r\n");
+			}
 		}
 	}
 
 	char fn[1024];
 	struct entry e;
-	strlcpy(fn, nlist.datadir, sizeof(fn));
+	strlcpy(fn, cnf_lookup("datadir"), sizeof(fn));
 	find_articles(fn, newest, 10);
-	printf("%s\r\n\r\n", nlist.ct_html);
+	printf("%s\r\n\r\n", cnf_lookup("ct_html"));
 	fflush(stdout);
-	if(query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
-		snprintf(fn, sizeof(fn), "%s/summary.rss", nlist.htmldir);
+	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
+		snprintf(fn, sizeof(fn), "%s/summary.rss", cnf_lookup("htmldir"));
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_rss, &e);
 	} else {
-		snprintf(fn, sizeof(fn), "%s/main.html", nlist.htmldir);
+		snprintf(fn, sizeof(fn), "%s/main.html", cnf_lookup("htmldir"));
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_front, &e);
 	}
 
 done:
 	if (gz != NULL) {
-		if (gzclose(gz) != Z_OK)
+		if (gzclose(gz) != Z_OK) {
 			msg("error main: gzclose");
+		}
 		gz = NULL;
-	} else
+	} else {
 		fflush(stdout);
+	}
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
 	config_queue_purge();
 	return (0);
@@ -665,10 +654,9 @@ msg(const char *fmt, ...)
 	time_t t = time(NULL);
 	struct tm *tm = gmtime(&t);
 
-	if (!nlist.logfile || (f = fopen(nlist.logfile, "a")) == NULL)
-	{
+	if ((f = fopen(cnf_lookup("logfile"), "a")) == NULL) {
 		fprintf(stderr, "%s: cannot open logfile: %s\n", __func__,
-								nlist.logfile);
+							cnf_lookup("logfile"));
 		return;
 	}
 	fprintf(f, "%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d %s %s\tcgi[%u] ",
@@ -684,27 +672,29 @@ msg(const char *fmt, ...)
 }
 
 static int
-excluded(const char *name) {
+excluded(const char *name)
+{
 	FILE *f;
 	char s[8192], *p;
 
-	if (( f = fopen(nlist.excludefile, "r")) == NULL) {
+	if (( f = fopen(cnf_lookup("excludefile"), "r")) == NULL) {
 		msg("Cannot open exclude file.\n");
 		return 0;
 	}
-	while(fgets(s, sizeof(s), f)) {
+	while (fgets(s, sizeof(s), f)) {
 		chomp(s);
-		if((p = strstr(name, s)) != NULL) {
+		if ((p = strstr(name, s)) != NULL) {
 			fclose(f);
-			return 1;
+			return (1);
 		}
 	}
 	fclose(f);
-	return 0;
+	return (0);
 }
 
 void
-chomp(char *s) {
-    while(*s && *s != '\n' && *s != '\r') s++;
+chomp(char *s)
+{
+    while (*s && *s != '\n' && *s != '\r') s++;
     *s = 0;
 }
