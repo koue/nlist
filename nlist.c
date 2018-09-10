@@ -76,7 +76,8 @@ static void	 render_front_story(const char *m, const struct entry *e);
 static void	 find_articles(const char *path, struct entry *a, int size);
 static int	 read_file(struct entry *e);
 static char	*html_esc(const char *s, char *d, size_t len, int allownl);
-static int	 compare_name_des_fts(const FTSENT **a, const FTSENT **b);
+static int	 compare_name_des_fts(const FTSENT * const *a,
+						const FTSENT * const *b);
 static const char *rfc822_time(time_t t);
 void		 msg(const char *fmt, ...);
 void		 chomp(char *s);
@@ -434,7 +435,7 @@ html_esc(const char *s, char *d, size_t len, int allownl)
 }
 
 static int
-compare_name_des_fts(const FTSENT **a, const FTSENT **b)
+compare_name_des_fts(const FTSENT * const *a, const FTSENT * const *b)
 {
 	return (strcmp((*b)->fts_name, (*a)->fts_name));
 }
