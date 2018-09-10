@@ -28,12 +28,7 @@
  *
  */
 
-#include <sys/file.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fts.h>
@@ -42,9 +37,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
+#include <sys/param.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <zlib.h>
-#include <ctype.h>
 
 #include <cez_config.h>
 
@@ -80,7 +80,6 @@ static int	 compare_name_des_fts(const FTSENT * const *a,
 						const FTSENT * const *b);
 static const char *rfc822_time(time_t t);
 void		 msg(const char *fmt, ...);
-void		 chomp(char *s);
 static int 	excluded(const char *name);
 
 static double
@@ -106,15 +105,18 @@ d_printf(const char *fmt, ...)
 	va_start(ap, fmt);
 	r = vsnprintf(s, sizeof(s), fmt, ap);
 	va_end(ap);
-	if (r < 0 || r >= sizeof(s))
+	if (r < 0 || r >= sizeof(s)) {
 		msg("error d_printf: vsnprintf: r %d (%d)", r, (int)sizeof(s));
+	}
 	if (gz != NULL) {
 		r = gzputs(gz, s);
-		if (r != strlen(s))
+		if (r != strlen(s)) {
 			msg("error d_printf: gzputs: r %d (%d)",
 			    r, (int)strlen(s));
-	} else
+		}
+	} else {
 		fprintf(stdout, "%s", s);
+	}
 }
 
 static void
@@ -140,7 +142,7 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 	FILE *f;
 	char s[8192];
 
-	if ((f = fopen(html_fn, "r")) == NULL) {
+	if ((f = fopen(html_fn, "re")) == NULL) {
 		d_printf("ERROR: fopen: %s: %s<br>\n", html_fn, strerror(errno));
 		return (1);
 	}
@@ -153,12 +155,13 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 			a = b + 2;
 			if ((b = strstr(a, "%%")) != NULL) {
 				*b = 0;
-				if (!strcmp(a, "BASEURL"))
+				if (strcmp(a, "BASEURL") == 0) {
 					d_printf("%s", cnf_lookup("baseurl"));
-				else if (!strcmp(a, "CTYPE"))
+				} else if (strcmp(a, "CTYPE") == 0) {
 					d_printf("%s", cnf_lookup("ct_html"));
-				else if (r != NULL)
+				} else if (r != NULL) {
 					(*r)(a, e);
+				}
 				a = b + 2;
 			}
 		}
@@ -171,14 +174,16 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 static void
 render_rss(const char *m, const struct entry *e)
 {
-	if (!strcmp(m, "ITEMS")) {
+	if (strcmp(m, "ITEMS") == 0) {
 		char fn[1024];
 		int i;
 		snprintf(fn, sizeof(fn), "%s/summary_item.rss", cnf_lookup("htmldir"));
-		for (i = 0; newest[i].name[0]; ++i)
+		for (i = 0; newest[i].name[0]; ++i) {
 			render_html(fn, &render_rss_item, &newest[i]);
-	} else
+		}
+	} else {
 		d_printf("render_rss: unknown macro '%s'\n", m);
+	}
 }
 
 static void
@@ -186,17 +191,17 @@ render_rss_item(const char *m, const struct entry *e)
 {
 	char d[256];
 
-	if (!strcmp(m, "TITLE")) {
+	if (strcmp(m, "TITLE") == 0) {
 		d_printf("%s", html_esc(e->title, d, sizeof(d), 0));
-	} else if (!strcmp(m, "LINK")) {
+	} else if (strcmp(m, "LINK") == 0) {
 		d_printf("%s/%s.html", cnf_lookup("baseurl"), e->name);
-	} else if (!strcmp(m, "DATE")) {
+	} else if (strcmp(m, "DATE") == 0) {
 		d_printf("%s", ctime(&e->pubdate));
-	} else if (!strcmp(m, "BODY")) {
+	} else if (strcmp(m, "BODY") == 0) {
 		FILE *f;
 		char s[8192];
 
-		if ((f = fopen(e->fn, "r")) == NULL) {
+		if ((f = fopen(e->fn, "re")) == NULL) {
 			d_printf("render_rss_item: fopen %s: %s\n",
 				e->fn, strerror(errno));
 			return;
@@ -204,13 +209,15 @@ render_rss_item(const char *m, const struct entry *e)
 
 		int line = 0;
 		while (fgets(s, sizeof(s), f)) {
-			if(line)
+			if(line) {
 				d_printf("%s", s);
+			}
 			line++;
 		}
 		fclose(f);
-	} else
+	} else {
 		d_printf("render_rss_item: unknown macro '%s'\n", m);
+	}
 }
 
 static void
@@ -219,55 +226,60 @@ render_front(const char *m, const struct entry *e)
 	char fn[1024];
 	int i;
 
-	if (!strcmp(m, "STORY")) {
+	if (strcmp(m, "STORY") == 0) {
 		snprintf(fn, sizeof(fn), "%s/story.html", cnf_lookup("htmldir"));
 		for (i = 0; newest[i].name[0]; ++i) {
 			render_html(fn, &render_front_story, &newest[i]);
 		}
-	} else if (!strcmp(m, "HEADER")) {
+	} else if (strcmp(m, "HEADER") == 0) {
 		snprintf(fn, sizeof(fn), "%s/header.html", cnf_lookup("htmldir"));
 		render_html(fn, NULL, NULL);
-	} else if (!strcmp(m, "FOOTER")) {
+	} else if (strcmp(m, "FOOTER") == 0) {
 		snprintf(fn, sizeof(fn), "%s/footer.html", cnf_lookup("htmldir"));
 		render_html(fn, NULL, NULL);
-	} else
+	} else {
 		d_printf("render_front: unknown macro '%s'<br>\n", m);
+	}
 }
 
 static void
 render_front_story(const char *m, const struct entry *e)
 {
-	if (!strcmp(m, "NAME")) {
-		if (e->title[0])
+	if (strcmp(m, "NAME") == 0) {
+		if (e->title[0]) {
 			d_printf("%s", e->title);
-		else
+		} else {
 			d_printf("%s", "NONAMEZ");
-	} else if (!strcmp(m, "DATE")) {
+		}
+	} else if (strcmp(m, "DATE") == 0) {
 		d_printf("%s", ctime(&e->pubdate));
-	} else if (!strcmp(m, "BASEURL")) {
+	} else if (strcmp(m, "BASEURL") == 0) {
 		d_printf("%s", cnf_lookup("baseurl"));
-	} else if (!strcmp(m, "ARTICLE")) {
-		if (e->parent[0])
+	} else if (strcmp(m, "ARTICLE") == 0) {
+		if (e->parent[0]) {
 			d_printf("%s/", e->parent);
+		}
 		d_printf("%s", e->name);
-	} else if (!strcmp(m, "BODY")) {
+	} else if (strcmp(m, "BODY") == 0) {
 		FILE *f;
 		char s[8192];
 
-		if ((f = fopen(e->fn, "r")) == NULL) {
+		if ((f = fopen(e->fn, "re")) == NULL) {
 			d_printf("render_front_story: fopen: %s: %s<br>\n",
 			    e->fn, strerror(errno));
 			return;
 		}
 		int line = 0;
 		while (fgets(s, sizeof(s), f)) {
-			if(line)
+			if(line) {
 				d_printf("%s", s);
+			}
 			line++;
 		}
 		fclose(f);
-	} else
+	} else {
 		d_printf("render_front_story: unknown macro '%s'<br>\n", m);
+	}
 }
 
 static void
@@ -288,12 +300,14 @@ find_articles(const char *path, struct entry *a, int size)
 		d_printf("fts_open: %s: %s<br>\n", path, strerror(errno));
 		return;
 	} else if ((e = fts_read(fts)) == NULL || !(e->fts_info & FTS_D)) {
-		d_printf("fts_read: fts_info %s: %s<br>\n", path, strerror(errno));
+		d_printf("fts_read: fts_info %s: %s<br>\n", path,
+							strerror(errno));
 		return;
 	} else if ((e = fts_children(fts, FTS_NAMEONLY)) == NULL) {
-		if (errno != 0)
-			d_printf("fts_children: %s: %s<br>\n",
-			    path, strerror(errno));
+		if (errno != 0) {
+			d_printf("fts_children: %s: %s<br>\n", path,
+							strerror(errno));
+		}
 		return;
 	}
 
@@ -306,12 +320,14 @@ find_articles(const char *path, struct entry *a, int size)
 			if(strlen(tmp)) {
 				if(strstr(tmp, ".html") != NULL) {
 					strlcpy(article, tmp, sizeof(article));
-					if ((tmp = strstr(article, ".")) != NULL)
+					if ((tmp = strstr(article, ".")) != NULL) {
 						*tmp = 0;
+					}
 					strlcat(article,".txt",sizeof(article));
 				}
-				else
+				else {
 					strlcpy(parent, tmp, sizeof(parent));
+				}
 			}
 		}
 	}
@@ -324,9 +340,10 @@ find_articles(const char *path, struct entry *a, int size)
 	if(!(strncmp(parent, "rss", 3))) {
 		parent[0] = 0;
 	}
-	if(parent[0] && !article[0])
+	if(parent[0] && !article[0]) {
 		strlcpy(article, "index.txt", sizeof(article));
-	while((( e = fts_read(fts)) != NULL) && (i < size)) {
+	}
+	while ((( e = fts_read(fts)) != NULL) && (i < size)) {
 		if ((e->fts_info & FTS_F)
 			&& ((!(strlen(parent)) && (e->fts_level == 1)) || !(strcmp(parent, e->fts_parent->fts_name)))
 			&& ((!(strlen(article)) && !excluded(e->fts_path)) || !(strcmp(article, e->fts_name)))
@@ -341,12 +358,14 @@ find_articles(const char *path, struct entry *a, int size)
 				continue;
 			}
 
-			if(strcmp(e->fts_parent->fts_name, "data"))
+			if(strcmp(e->fts_parent->fts_name, "data") != 0) {
 				snprintf(a[i].parent, sizeof(a[i].parent), "%s", e->fts_parent->fts_name);
+			}
 
 			pos = e->fts_name;
-			while(*pos && *pos != '.')
+			while (*pos && *pos != '.') {
 				pos++;
+			}
 			*pos = 0;
 			strlcpy(a[i].name, e->fts_name, sizeof(a[i].name));
 			a[i].pubdate = e->fts_statp->st_mtime;
@@ -361,11 +380,12 @@ static int
 read_file(struct entry *e)
 {
 	FILE *f;
-	char s[8192], fn[MAXNAMLEN + 1], *p;
+	char s[8192];
 
 	e->name[0] = e->parent[0] = e->title[0] = 0;
-	if ((f = fopen(e->fn, "r")) == NULL)
+	if ((f = fopen(e->fn, "re")) == NULL) {
 		return (1);
+	}
 
 	fgets(s, sizeof(s), f);
 	if (s[0]) {
@@ -373,12 +393,6 @@ read_file(struct entry *e)
 		strlcpy(e->title, s, sizeof(e->title));
 	}
 
-	fclose(f);
-	if ((p = strrchr(e->fn, '/')) == NULL || strcmp(p + 1, "comment"))
-		return (0);
-	snprintf(fn, sizeof(fn), "%s.mod", e->fn);
-	if ((f = fopen(fn, "r")) == NULL)
-		return (0);
 	fclose(f);
 	return (0);
 }
@@ -388,7 +402,7 @@ html_esc(const char *s, char *d, size_t len, int allownl)
 {
 	size_t p;
 
-	for (p = 0; *s && p < len - 1; ++s)
+	for (p = 0; *s && p < len - 1; ++s) {
 		switch (*s) {
 		case '&':
 			if (p < len - 5) {
@@ -430,6 +444,7 @@ html_esc(const char *s, char *d, size_t len, int allownl)
 		default:
 			d[p++] = *s;
 		}
+	}
 	d[p] = 0;
 	return (d);
 }
@@ -478,7 +493,7 @@ convert_rfc822_time(const char *date)
 		return (0);
 	}
 	for (i = 0; mns[i] != NULL; ++i) {
-		if (!strcmp(mns[i], mn)) {
+		if (strcmp(mns[i], mn) == 0) {
 			break;
 		}
 	}
@@ -583,8 +598,9 @@ main(void)
 						 /and/this/if/its/single/article.html
 				*/
                         	if ((!isalpha(s[i])) && (!isdigit(s[i])) && (s[i] != '/') && (s[i] != '_')) {
-					if ((i == (strlen(s)-5)) && (s[i] == '.'))
+					if ((i == (strlen(s)-5)) && (s[i] == '.')) {
 						continue;
+					}
                                 	printf("Status: 400\r\n\r\nYou are trying to send wrong query!\n");
 	                                fflush(stdout);
         	                        return (0);
@@ -606,7 +622,7 @@ main(void)
 	if ((s = getenv("HTTP_ACCEPT_ENCODING")) != NULL) {
 		char *p = strstr(s, "gzip");
 
-		if (p != NULL && (strncmp(p, "gzip;q=0", 8) ||
+		if (p != NULL && ((strncmp(p, "gzip;q=0", 8) != 0) ||
 		    atoi(p + 7) > 0.0)) {
 			gz = gzdopen(fileno(stdout), "wb9");
 			if (gz == NULL) {
@@ -655,7 +671,7 @@ msg(const char *fmt, ...)
 	time_t t = time(NULL);
 	struct tm *tm = gmtime(&t);
 
-	if ((f = fopen(cnf_lookup("logfile"), "a")) == NULL) {
+	if ((f = fopen(cnf_lookup("logfile"), "ae")) == NULL) {
 		fprintf(stderr, "%s: cannot open logfile: %s\n", __func__,
 							cnf_lookup("logfile"));
 		return;
@@ -678,12 +694,12 @@ excluded(const char *name)
 	FILE *f;
 	char s[8192], *p;
 
-	if (( f = fopen(cnf_lookup("excludefile"), "r")) == NULL) {
+	if (( f = fopen(cnf_lookup("excludefile"), "re")) == NULL) {
 		msg("Cannot open exclude file.\n");
 		return 0;
 	}
 	while (fgets(s, sizeof(s), f)) {
-		chomp(s);
+		s[strlen(s) - 1] = 0;
 		if ((p = strstr(name, s)) != NULL) {
 			fclose(f);
 			return (1);
@@ -691,11 +707,4 @@ excluded(const char *name)
 	}
 	fclose(f);
 	return (0);
-}
-
-void
-chomp(char *s)
-{
-    while (*s && *s != '\n' && *s != '\r') s++;
-    *s = 0;
 }

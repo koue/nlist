@@ -1,5 +1,7 @@
 #
 CFLAGS+=	-Wall -Wstrict-prototypes -g -O0 -static -I/usr/local/include
+LDFLAGS+=	-L/usr/local/lib
+LDADD=		-lz -lcezconfig
 CHROOT=		/var/www
 DATA=		/opt/koue.chaosophia.net/nlist
 WEB=		/htdocs/koue.chaosophia.net
@@ -8,7 +10,7 @@ CGI=		index.cgi
 all: nlist
 
 nlist: nlist.c
-	$(CC) $(CFLAGS) -o nlist nlist.c -lz /usr/local/lib/libcezconfig.a
+	$(CC) $(CFLAGS) $(LDFLAGS) -o nlist nlist.c $(LDADD)
 
 clean:
 	rm -f nlist *.core
