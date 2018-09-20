@@ -16,9 +16,6 @@ MK_DEBUG_FILES=	no
 
 MAKEOBJDIR=	.
 
-clean:
-	rm -f nlist *.core
-
 install:
 	rm -rf $(CHROOT)$(DATA)/html
 	rm -rf $(CHROOT)$(WEB)/css
