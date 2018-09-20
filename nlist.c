@@ -60,6 +60,8 @@ struct entry {
 
 static const char	*conffile = "/opt/koue.chaosophia.net/nlist/nlist.conf";
 static const char	*corefile = "/opt/koue.chaosophia.net/nlist/nlist.core";
+static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
+    "baseurl", "ct_html", NULL };
 
 static struct entry	 newest[64];	/* 9 front, 9 weeklist */
 static gzFile		 gz = NULL;
@@ -490,21 +492,6 @@ convert_rfc822_time(const char *date)
 }
 
 int
-config_check(void)
-{
-	const char *conf[] = { "datadir", "htmldir", "logfile", "excludefile",
-	    "baseurl", "ct_html", NULL };
-
-	for (int i = 0; conf[i] != NULL; ++i) {
-		if (cnf_lookup(conf[i]) == NULL) {
-			render_error("%s is missing", conf[i]);
-			return (-1);
-		}
-	}
-	return (0);
-}
-
-int
 main(void)
 {
 	const char *s;
@@ -519,7 +506,8 @@ main(void)
 		render_error("load_conf: file '%s'", conffile);
 		goto done;
 	}
-	if (config_check() == -1) {
+	if ((s = config_queue_check(params)) != NULL) {
+		render_error("%s is missing", s);
 		goto done;
 	}
 	if (chdir("/tmp")) {
