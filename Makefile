@@ -1,5 +1,8 @@
 #
-CFLAGS+=	-Wall -Wstrict-prototypes -g -O0 -static -I/usr/local/include
+PROG=		nlist
+
+CFLAGS+=	-Werror \
+		-I/usr/local/include
 LDFLAGS+=	-L/usr/local/lib
 LDADD=		-lz -lcezconfig
 CHROOT=		/var/www
@@ -7,10 +10,11 @@ DATA=		/opt/koue.chaosophia.net/nlist
 WEB=		/htdocs/koue.chaosophia.net
 CGI=		index.cgi
 
-all: nlist
+MAN=
 
-nlist: nlist.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o nlist nlist.c $(LDADD)
+MK_DEBUG_FILES=	no
+
+MAKEOBJDIR=	.
 
 clean:
 	rm -f nlist *.core
@@ -31,3 +35,4 @@ test:
 
 #testquery:
 #	QUERY_STRING='/action/submit' chroot -u www -g www $(CHROOT) $(WEB)/$(CGI)
+.include <bsd.prog.mk>
