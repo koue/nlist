@@ -1,2 +1,4 @@
 *.core
+*.o
+.depend*
 nlist
