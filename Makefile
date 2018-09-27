@@ -4,7 +4,7 @@ PROG=		nlist
 CFLAGS+=	-Werror \
 		-I/usr/local/include
 LDFLAGS+=	-L/usr/local/lib
-LDADD=		-lz -lcezconfig
+LDADD=		-lz -lcezconfig -lcezmisc
 CHROOT=		/var/www
 DATA=		/opt/koue.chaosophia.net/nlist
 WEB=		/htdocs/koue.chaosophia.net

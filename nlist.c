@@ -47,6 +47,7 @@
 #include <zlib.h>
 
 #include <cez_config.h>
+#include <cez_misc.h>
 
 #define cnf_lookup config_queue_value_get
 
@@ -80,22 +81,8 @@ static int	 read_file(struct entry *e);
 static char	*html_esc(const char *s, char *d, size_t len, int allownl);
 static int	 compare_name_des_fts(const FTSENT * const *a,
 						const FTSENT * const *b);
-static const char *rfc822_time(time_t t);
 void		 msg(const char *fmt, ...);
 static int 	excluded(const char *name);
-
-static double
-timelapse(struct timeval *t)
-{
-	struct timeval u;
-	double d;
-
-	gettimeofday(&u, NULL);
-	d = (double)((u.tv_sec * 1000000 + u.tv_usec) -
-	    (t->tv_sec * 1000000 + t->tv_usec)) / 1000.0;
-	memcpy(t, &u, sizeof(*t));
-	return (d);
-}
 
 static void
 d_printf(const char *fmt, ...)
@@ -455,40 +442,6 @@ static int
 compare_name_des_fts(const FTSENT * const *a, const FTSENT * const *b)
 {
 	return (strcmp((*b)->fts_name, (*a)->fts_name));
-}
-
-static const char *
-rfc822_time(time_t t)
-{
-	static char s[30], *p;
-
-	p = ctime(&t);
-	if (p == NULL || strlen(p) != 25) {
-		strlcpy(s, "<invalid-time>", sizeof(s));
-		return (s);
-	}
-	/* Thu Nov 24 18:22:48 1986\n */
-	/* Wed, 02 Oct 2002 13:00:00 GMT */
-	strlcpy(s, p, 4);
-	strlcat(s, ", ", 6);
-	strlcat(s, p + 8, 9);
-	strlcat(s, p + 4, 13);
-	strlcat(s, p + 20, 17);
-	strlcat(s, " ", 18);
-	strlcat(s, p + 11, 26);
-	strlcat(s, " GMT", 30);
-	return (s);
-}
-
-static time_t
-convert_rfc822_time(const char *date)
-{
-	struct tm tm;
-	time_t t;
-
-	strptime(date, "%a, %e %h %Y %H:%M:%S %z", &tm);
-	t = mktime(&tm);
-	return (t);
 }
 
 int
