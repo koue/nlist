@@ -16,10 +16,12 @@ GH_PROJECT=	nlist:nlist \
 		libcez:libcez
 GH_TAGNAME=	${CEZ_VERSION}:libcez
 
+CFLAGS+=	-I${WRKSRC_libcez}/src/config \
+		-I${WRKSRC_libcez}/src/misc
+LDFLAGS+=	-L${WKRSRC_libcez}/src/config \
+		-L${WKRSRC_libcez}/src/misc
+
 pre-configure:
 	@(cd ${WRKSRC_libcez}/src/config && ${SETENV} ${MAKE_ENV} ${MAKE})
-	${REINPLACE_CMD} -e 's|/usr/local/include|${WRKDIR}/libcez-${CEZ_VERSION}/src/config|g' \
-			 -e 's|/usr/local/lib|${WRKDIR}/libcez-${CEZ_VERSION}/src/config|g' \
-		${WRKSRC}/Makefile
 
 .include <bsd.port.mk>
