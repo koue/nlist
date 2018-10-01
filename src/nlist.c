@@ -52,11 +52,11 @@
 #define cnf_lookup config_queue_value_get
 
 struct entry {
-        char                     fn[MAXNAMLEN + 1];	/* absolute path of the file		*/
-        time_t       pubdate;				/* date of publication			*/
-        char                     name[64];		/* name of the article 		 	*/
-	char			 parent[64];		/* parent directory ot the article	*/
-        char                     title[128];		/* first line of the article		*/
+	char	fn[MAXNAMLEN + 1];	/* absolute path of the file */
+	time_t	pubdate;		/* date of publication */
+	char	name[64];		/* name of the article */
+	char	parent[64];		/* parent directory ot the article */
+	char	title[128];		/* first line of the article */
 };
 
 static const char	*conffile = "/opt/koue.chaosophia.net/nlist/nlist.conf";
@@ -64,25 +64,25 @@ static const char	*corefile = "/opt/koue.chaosophia.net/nlist/nlist.core";
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
 
-static struct entry	 newest[64];	/* 9 front, 9 weeklist */
-static gzFile		 gz = NULL;
+static struct 	entry newest[64];
+static gzFile	gz = NULL;
 
-typedef	void (*render_cb)(const char *, const struct entry *);
+typedef	void 	(*render_cb)(const char *, const struct entry *);
 
-static void	 render_error(const char *fmt, ...);
-static int	 render_html(const char *html_fn, render_cb r,
+static void	render_error(const char *fmt, ...);
+static int	render_html(const char *html_fn, render_cb r,
 		    const struct entry *e);
 static void	render_rss(const char *m, const struct entry *e);
 static void	render_rss_item(const char *m, const struct entry *e);
-static void	 render_front(const char *m, const struct entry *e);
-static void	 render_front_story(const char *m, const struct entry *e);
-static void	 find_articles(const char *path, struct entry *a, int size);
-static int	 read_file(struct entry *e);
+static void	render_front(const char *m, const struct entry *e);
+static void	render_front_story(const char *m, const struct entry *e);
+static void	find_articles(const char *path, struct entry *a, int size);
+static int	read_file(struct entry *e);
 static char	*html_esc(const char *s, char *d, size_t len, int allownl);
-static int	 compare_name_des_fts(const FTSENT * const *a,
-						const FTSENT * const *b);
-void		 msg(const char *fmt, ...);
-static int 	excluded(const char *name);
+static int	compare_name_des_fts(const FTSENT * const *a,
+		    const FTSENT * const *b);
+static void	msg(const char *fmt, ...);
+static int	excluded(const char *name);
 
 static void
 d_printf(const char *fmt, ...)
@@ -132,7 +132,8 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 	char s[8192];
 
 	if ((f = fopen(html_fn, "re")) == NULL) {
-		d_printf("ERROR: fopen: %s: %s<br>\n", html_fn, strerror(errno));
+		d_printf("ERROR: fopen: %s: %s<br>\n", html_fn,
+		    strerror(errno));
 		return (1);
 	}
 	while (fgets(s, sizeof(s), f)) {
@@ -166,7 +167,8 @@ render_rss(const char *m, const struct entry *e)
 	if (strcmp(m, "ITEMS") == 0) {
 		char fn[1024];
 		int i;
-		snprintf(fn, sizeof(fn), "%s/summary_item.rss", cnf_lookup("htmldir"));
+		snprintf(fn, sizeof(fn), "%s/summary_item.rss",
+		    cnf_lookup("htmldir"));
 		for (i = 0; newest[i].name[0]; ++i) {
 			render_html(fn, &render_rss_item, &newest[i]);
 		}
@@ -196,12 +198,9 @@ render_rss_item(const char *m, const struct entry *e)
 			return;
 		}
 
-		int line = 0;
+		fgets(s, sizeof(s), f);		/* skip first line */
 		while (fgets(s, sizeof(s), f)) {
-			if(line) {
-				d_printf("%s", s);
-			}
-			line++;
+			d_printf("%s", s);
 		}
 		fclose(f);
 	} else {
@@ -216,15 +215,18 @@ render_front(const char *m, const struct entry *e)
 	int i;
 
 	if (strcmp(m, "STORY") == 0) {
-		snprintf(fn, sizeof(fn), "%s/story.html", cnf_lookup("htmldir"));
+		snprintf(fn, sizeof(fn), "%s/story.html",
+		    cnf_lookup("htmldir"));
 		for (i = 0; newest[i].name[0]; ++i) {
 			render_html(fn, &render_front_story, &newest[i]);
 		}
 	} else if (strcmp(m, "HEADER") == 0) {
-		snprintf(fn, sizeof(fn), "%s/header.html", cnf_lookup("htmldir"));
+		snprintf(fn, sizeof(fn), "%s/header.html",
+		    cnf_lookup("htmldir"));
 		render_html(fn, NULL, NULL);
 	} else if (strcmp(m, "FOOTER") == 0) {
-		snprintf(fn, sizeof(fn), "%s/footer.html", cnf_lookup("htmldir"));
+		snprintf(fn, sizeof(fn), "%s/footer.html",
+		    cnf_lookup("htmldir"));
 		render_html(fn, NULL, NULL);
 	} else {
 		d_printf("render_front: unknown macro '%s'<br>\n", m);
@@ -258,12 +260,9 @@ render_front_story(const char *m, const struct entry *e)
 			    e->fn, strerror(errno));
 			return;
 		}
-		int line = 0;
+		fgets(s, sizeof(s), f);		/* skip first line */
 		while (fgets(s, sizeof(s), f)) {
-			if(line) {
-				d_printf("%s", s);
-			}
-			line++;
+			d_printf("%s", s);
 		}
 		fclose(f);
 	} else {
@@ -283,9 +282,8 @@ find_articles(const char *path, struct entry *a, int size)
 	parent[0] = article[0] = 0;
 
 	memset(a, 0, size * sizeof(*a));
-	fts = fts_open(path_argv, FTS_LOGICAL,
-	    compare_name_des_fts);
-	if (fts == NULL) {
+	if ((fts = fts_open(path_argv, FTS_LOGICAL, compare_name_des_fts))
+	    == NULL) {
 		d_printf("fts_open: %s: %s<br>\n", path, strerror(errno));
 		return;
 	} else if ((e = fts_read(fts)) == NULL || (e->fts_info != FTS_D)) {
@@ -322,11 +320,12 @@ find_articles(const char *path, struct entry *a, int size)
 	}
 
 	/*
-	If there is parent but not article selected then show only index.txt content.
-	If the main directory should be shown then show all *.txt files in the current directory.
+	If there is parent but not article selected then show only index.txt
+	content. If the main directory should be shown then show all *.txt
+	files in the current directory.
 	*/
 	/* if rss generate rss from main directory */
-	if(!(strncmp(parent, "rss", 3))) {
+	if((strncmp(parent, "rss", 3)) == 0) {
 		parent[0] = 0;
 	}
 	if(parent[0] && !article[0]) {
@@ -558,7 +557,8 @@ main(void)
 	printf("%s\r\n\r\n", cnf_lookup("ct_html"));
 	fflush(stdout);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
-		snprintf(fn, sizeof(fn), "%s/summary.rss", cnf_lookup("htmldir"));
+		snprintf(fn, sizeof(fn), "%s/summary.rss",
+		    cnf_lookup("htmldir"));
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_rss, &e);
 	} else {
@@ -581,7 +581,7 @@ done:
 	return (0);
 }
 
-void
+static void
 msg(const char *fmt, ...)
 {
 	FILE *f;
