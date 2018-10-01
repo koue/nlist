@@ -1,35 +1,43 @@
 #
-PROG=		nlist
+SUBDIR=		src
 
-CFLAGS+=	-Werror \
-		-I/usr/local/include
-LDFLAGS+=	-L/usr/local/lib
-LDADD=		-lz -lcezconfig -lcezmisc
-CHROOT=		/var/www
-DATA=		/opt/koue.chaosophia.net/nlist
-WEB=		/htdocs/koue.chaosophia.net
+LOCALBASE=	/var/www
+DATADIR=	/opt/koue.chaosophia.net/nlist
+WEBDIR=		/htdocs/koue.chaosophia.net
+TMPDIR=		/tmp
+LIBEXECDIR=	/libexec
 CGI=		index.cgi
 
-MAN=
+.if exists(src/nlist)
+CGILDD=		ldd src/nlist | grep "=>" | cut -d ' ' -f 3
 
-MK_DEBUG_FILES=	no
+CGIlibs=	${CGILDD:sh}
+.endif
 
-MAKEOBJDIR=	.
+chroot:
+	mkdir -p $(LOCALBASE)$(LIBDIR)
+	mkdir -p $(LOCALBASE)$(DATADIR)/data
+	mkdir -p $(LOCALBASE)$(WEBDIR)
+	mkdir -p $(LOCALBASE)$(CONFDIR)
+	mkdir -p $(LOCALBASE)$(LIBEXECDIR)
+	mkdir -p $(LOCALBASE)$(TMPDIR)
+	cp /libexec/ld-elf.so.1 $(LOCALBASE)$(LIBEXECDIR)/
+.	for l in ${CGIlibs}
+	cp -f ${l} $(LOCALBASE)$(LIBDIR)/
+.	endfor
 
 install:
-	rm -rf $(CHROOT)$(DATA)/html
-	rm -rf $(CHROOT)$(WEB)/css
-	rm -rf $(CHROOT)$(DATA)/nlist.conf
-	mkdir -p $(CHROOT)$(WEB)/
-	cp nlist $(CHROOT)$(WEB)/$(CGI)
-	mkdir -p $(CHROOT)$(DATA)/
-	cp -r nlist.conf html $(CHROOT)$(DATA)
-	cp -r css $(CHROOT)$(WEB)
-	chown -R www:www $(CHROOT)$(DATA)/
+	rm -rf $(LOCALBASE)$(DATADIR)/html
+	rm -rf $(LOCALBASE)$(WEBDIR)/css
+	rm -rf $(LOCALBASE)$(DATADIR)/nlist.conf
+	cp src/nlist $(LOCALBASE)$(WEBDIR)/$(CGI)
+	cp -r etc/nlist.conf html $(LOCALBASE)$(DATADIR)
+	cp -r css $(LOCALBASE)$(WEBDIR)
+	chown -R www:www $(LOCALBASE)$(DATADIR)/
 
 test:
-	chroot -u www -g www $(CHROOT) $(WEB)/$(CGI)
+	chroot -u www -g www $(LOCALBASE) $(WEBDIR)/$(CGI)
 
 #testquery:
-#	QUERY_STRING='/action/submit' chroot -u www -g www $(CHROOT) $(WEB)/$(CGI)
-.include <bsd.prog.mk>
+#	QUERY_STRING='/action/submit' chroot -u www -g www $(LOCALBASE) $(WEBDIR)/$(CGI)
+.include <bsd.subdir.mk>
