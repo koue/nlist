@@ -1,1 +1,30 @@
-simple blog written in c inspired by blosxom and undeadly.org
+Simple blog written in C inspired by blosxom and undeadly.org
+=============================================================
+
+How to use on FreeBSD
+
+# git clone https://github.com/koue/libcez
+# cd libcez/src/config && make && make install
+# cd libcez/src/misc && make && make install
+# git clone https://github.com/koue/nlist
+# cd nlist && make && make chroot && make install
+# pkg install obhttpd slowcgi
+# cat /usr/local/etc/obhttpd.conf
+	chroot "/var/www"
+
+	server "koue.chaosophia.net" {
+		listen on 8.8.8.8 port 80
+		root "/htdocs/koue.chaosophia.net"
+		directory index index.cgi
+		location "/*.cgi" {
+			fastcgi socket "/run/slowcgi.sock"
+		}
+	}
+# sysrc obhttpd_enable="YES"
+# mkdir /var/www/logs
+# mkdir /var/www/tmp
+# mkdir /var/www/run
+# sysrc slowcgi_enable="YES"
+# sysrc slowcgi_flags="-p /var/www -s /var/www/run/slowcgi.sock -u www"
+# service slowcgi start
+# service obhttpd start
