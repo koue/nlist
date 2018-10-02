@@ -28,3 +28,4 @@ How to use on FreeBSD
 # sysrc slowcgi_flags="-p /var/www -s /var/www/run/slowcgi.sock -u www"
 # service slowcgi start
 # service obhttpd start
+# printf "Title\nFirst line" > /var/www/opt/koue.chaosophia.net/nlist/data/first.txt
