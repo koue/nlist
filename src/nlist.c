@@ -49,6 +49,7 @@
 #include <cez_config.h>
 #include <cez_misc.h>
 
+#define	VERSION	1001
 #define cnf_lookup config_queue_value_get
 
 struct entry {
@@ -584,6 +585,7 @@ done:
 static void
 msg(const char *fmt, ...)
 {
+	extern char *__progname;
 	FILE *f;
 	va_list ap;
 	time_t t = time(NULL);
@@ -594,10 +596,10 @@ msg(const char *fmt, ...)
 							cnf_lookup("logfile"));
 		return;
 	}
-	fprintf(f, "%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d %s %s\tcgi[%u] ",
+	fprintf(f, "%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d %s %s %s v%d [%u] ",
 	    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
 	    tm->tm_hour, tm->tm_min, tm->tm_sec, getenv("REMOTE_ADDR"), "-" ,
-	    (unsigned)getpid());
+	    __progname, VERSION, (unsigned)getpid());
 	va_start(ap, fmt);
 	vfprintf(f, fmt, ap);
 	va_end(ap);

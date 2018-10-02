@@ -35,6 +35,9 @@ install:
 	cp -r css $(LOCALBASE)$(WEBDIR)
 	chown -R www:www $(LOCALBASE)$(DATADIR)/
 
+update:
+	cp src/nlist $(LOCALBASE)$(WEBDIR)/$(CGI)
+
 test:
 	chroot -u www -g www $(LOCALBASE) $(WEBDIR)/$(CGI)
 
