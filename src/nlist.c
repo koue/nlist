@@ -49,7 +49,7 @@
 #include <cez_config.h>
 #include <cez_misc.h>
 
-#define	VERSION	1001
+#define	VERSION	1002
 #define cnf_lookup config_queue_value_get
 
 struct entry {
@@ -60,16 +60,24 @@ struct entry {
 	char	title[128];		/* first line of the article */
 };
 
-static const char	*conffile = "/opt/koue.chaosophia.net/nlist/nlist.conf";
-static const char	*corefile = "/opt/koue.chaosophia.net/nlist/nlist.core";
+static const char *conffile = "/opt/koue.chaosophia.net/nlist/nlist.conf";
+static const char *corefile = "/opt/koue.chaosophia.net/nlist/nlist.core";
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
 
 static struct 	entry newest[64];
 static gzFile	gz = NULL;
 
+static int	compare_name_des_fts(const FTSENT * const *a,
+		    const FTSENT * const *b);
+static void	find_articles(const char *path, struct entry *a, int size);
+static int	file_get_attr(FTSENT *fent, struct entry *e);
+static int	file_is_excluded(const char *name);
+static int	file_is_txt(const char *name);
+static int	file_read(struct entry *e);
+static char	*html_esc(const char *s, char *d, size_t len, int allownl);
+static void	msg(const char *fmt, ...);
 typedef	void 	(*render_cb)(const char *, const struct entry *);
-
 static void	render_error(const char *fmt, ...);
 static int	render_html(const char *html_fn, render_cb r,
 		    const struct entry *e);
@@ -77,13 +85,39 @@ static void	render_rss(const char *m, const struct entry *e);
 static void	render_rss_item(const char *m, const struct entry *e);
 static void	render_front(const char *m, const struct entry *e);
 static void	render_front_story(const char *m, const struct entry *e);
-static void	find_articles(const char *path, struct entry *a, int size);
-static int	read_file(struct entry *e);
-static char	*html_esc(const char *s, char *d, size_t len, int allownl);
-static int	compare_name_des_fts(const FTSENT * const *a,
-		    const FTSENT * const *b);
-static void	msg(const char *fmt, ...);
-static int	excluded(const char *name);
+
+static int
+file_is_txt(const char *name)
+{
+	if ((name[strlen(name)-1] == 't') && (name[strlen(name)-2] == 'x') &&
+	    (name[strlen(name)-3] == 't') && (name[strlen(name)-4] == '.')) {
+		return (0);
+	} else {
+		return (-1);
+	}
+}
+
+static int
+file_get_attr(FTSENT *fent, struct entry *e)
+{
+	char *pos = fent->fts_name;
+	e->fn[0] = 0;
+	strlcpy(e->fn, fent->fts_path, sizeof(e->fn));
+	if (file_read(e)) {
+		return (-1);
+	}
+	/* if article in main directory don't use the parent */
+	if (strcmp(fent->fts_parent->fts_name, "data") != 0) {
+		strlcpy(e->parent, fent->fts_parent->fts_name, sizeof(e->parent));
+	}
+	while (*pos && *pos != '.') {
+		pos++;
+	}
+	*pos = 0;
+	strlcpy(e->name, fent->fts_name, sizeof(e->name));
+	e->pubdate = fent->fts_statp->st_mtime;
+	return (0);
+}
 
 static void
 d_printf(const char *fmt, ...)
@@ -334,31 +368,13 @@ find_articles(const char *path, struct entry *a, int size)
 	}
 	while ((( e = fts_read(fts)) != NULL) && (i < size)) {
 		if ((e->fts_info == FTS_F)
-			&& ((!(strlen(parent)) && (e->fts_level == 1)) || !(strcmp(parent, e->fts_parent->fts_name)))
-			&& ((!(strlen(article)) && !excluded(e->fts_path)) || !(strcmp(article, e->fts_name)))
-			&& (e->fts_name[strlen(e->fts_name)-1] == 't')
-			&& (e->fts_name[strlen(e->fts_name)-2] == 'x')
-			&& (e->fts_name[strlen(e->fts_name)-3] == 't')
-			&& (e->fts_name[strlen(e->fts_name)-4] == '.')) {
-
-			snprintf(a[i].fn, sizeof(a[i].fn), "%s", e->fts_path);
-			if (read_file(&a[i])) {
+		    && (((strlen(parent) == 0) && (e->fts_level == 1)) || (strcmp(parent, e->fts_parent->fts_name)) == 0)
+		    && (((strlen(article) == 0) && (file_is_excluded(e->fts_path) == 0)) || (strcmp(article, e->fts_name) == 0))
+		    && (file_is_txt(e->fts_name) == 0 )) {
+			if (file_get_attr(e, &a[i]) == -1) {
 				memset(&a[i], 0, sizeof(a[i]));
 				continue;
 			}
-
-			if(strcmp(e->fts_parent->fts_name, "data") != 0) {
-				snprintf(a[i].parent, sizeof(a[i].parent), "%s", e->fts_parent->fts_name);
-			}
-
-			pos = e->fts_name;
-			while (*pos && *pos != '.') {
-				pos++;
-			}
-			*pos = 0;
-			strlcpy(a[i].name, e->fts_name, sizeof(a[i].name));
-			a[i].pubdate = e->fts_statp->st_mtime;
-
 			i++;
 		}
 	}
@@ -366,7 +382,7 @@ find_articles(const char *path, struct entry *a, int size)
 }
 
 static int
-read_file(struct entry *e)
+file_read(struct entry *e)
 {
 	FILE *f;
 	char s[8192];
@@ -376,6 +392,7 @@ read_file(struct entry *e)
 		return (1);
 	}
 
+	/* read first line - article title */
 	fgets(s, sizeof(s), f);
 	if (s[0]) {
 		s[strlen(s) - 1] = 0;
@@ -609,13 +626,13 @@ msg(const char *fmt, ...)
 }
 
 static int
-excluded(const char *name)
+file_is_excluded(const char *name)
 {
 	FILE *f;
 	char s[8192], *p;
 
 	if (( f = fopen(cnf_lookup("excludefile"), "re")) == NULL) {
-		msg("Cannot open exclude file.\n");
+		msg("Cannot open exclude file.");
 		return 0;
 	}
 	while (fgets(s, sizeof(s), f)) {
