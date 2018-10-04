@@ -49,7 +49,7 @@
 #include <cez_config.h>
 #include <cez_misc.h>
 
-#define	VERSION	1002
+#define	VERSION	1003
 #define cnf_lookup config_queue_value_get
 
 struct entry {
@@ -85,6 +85,21 @@ static void	render_rss(const char *m, const struct entry *e);
 static void	render_rss_item(const char *m, const struct entry *e);
 static void	render_front(const char *m, const struct entry *e);
 static void	render_front_story(const char *m, const struct entry *e);
+static int	vf_parent(const char *p, int l, const char *f);
+static int	vf_article(const char *a, const char *fp, const char *fn);
+
+static int
+vf_parent(const char *p, int l, const char *f)
+{
+	return(((strlen(p) == 0) && (l == 1)) || (strcmp(p, f)) == 0);
+}
+
+static int
+vf_article(const char *a, const char *fp, const char *fn)
+{
+	return(((strlen(a) == 0) && (file_is_excluded(fp) == 0)) ||
+	    (strcmp(a, fn) == 0));
+}
 
 static int
 file_is_txt(const char *name)
@@ -368,8 +383,8 @@ find_articles(const char *path, struct entry *a, int size)
 	}
 	while ((( e = fts_read(fts)) != NULL) && (i < size)) {
 		if ((e->fts_info == FTS_F)
-		    && (((strlen(parent) == 0) && (e->fts_level == 1)) || (strcmp(parent, e->fts_parent->fts_name)) == 0)
-		    && (((strlen(article) == 0) && (file_is_excluded(e->fts_path) == 0)) || (strcmp(article, e->fts_name) == 0))
+		    && vf_parent(parent, e->fts_level, e->fts_parent->fts_name)
+		    && vf_article(article, e->fts_path, e->fts_name)
 		    && (file_is_txt(e->fts_name) == 0 )) {
 			if (file_get_attr(e, &a[i]) == -1) {
 				memset(&a[i], 0, sizeof(a[i]));
