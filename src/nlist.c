@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2018 Nikola Kolev <koue@chaosophia.net>
+ * Copyright (c) 2011-2019 Nikola Kolev <koue@chaosophia.net>
  * Copyright (c) 2004-2006 Daniel Hartmeier. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,11 +46,10 @@
 #include <unistd.h>
 #include <zlib.h>
 
-#include <cez_config.h>
+#include <cez_queue.h>
 #include <cez_misc.h>
 
-#define	VERSION	1003
-#define cnf_lookup config_queue_value_get
+#define	VERSION	1004
 
 struct entry {
 	char	fn[MAXNAMLEN + 1];	/* absolute path of the file */
@@ -64,6 +63,7 @@ static const char *conffile = "/opt/koue.chaosophia.net/nlist/nlist.conf";
 static const char *corefile = "/opt/koue.chaosophia.net/nlist/nlist.core";
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
+static struct cez_queue config;
 
 static struct 	entry newest[64];
 static gzFile	gz = NULL;
@@ -167,7 +167,7 @@ render_error(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(s, sizeof(s), fmt, ap);
 	va_end(ap);
-	printf("%s\r\n\r\n", cnf_lookup("ct_html"));
+	printf("%s\r\n\r\n", cqg(&config, "ct_html"));
 	fflush(stdout);
 	d_printf("<html><head><title>Error</title></head><body>\n");
 	d_printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
@@ -196,9 +196,9 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 			if ((b = strstr(a, "%%")) != NULL) {
 				*b = 0;
 				if (strcmp(a, "BASEURL") == 0) {
-					d_printf("%s", cnf_lookup("baseurl"));
+					d_printf("%s", cqg(&config, "baseurl"));
 				} else if (strcmp(a, "CTYPE") == 0) {
-					d_printf("%s", cnf_lookup("ct_html"));
+					d_printf("%s", cqg(&config, "ct_html"));
 				} else if (r != NULL) {
 					(*r)(a, e);
 				}
@@ -218,7 +218,7 @@ render_rss(const char *m, const struct entry *e)
 		char fn[1024];
 		int i;
 		snprintf(fn, sizeof(fn), "%s/summary_item.rss",
-		    cnf_lookup("htmldir"));
+		    cqg(&config, "htmldir"));
 		for (i = 0; newest[i].name[0]; ++i) {
 			render_html(fn, &render_rss_item, &newest[i]);
 		}
@@ -235,7 +235,7 @@ render_rss_item(const char *m, const struct entry *e)
 	if (strcmp(m, "TITLE") == 0) {
 		d_printf("%s", html_esc(e->title, d, sizeof(d), 0));
 	} else if (strcmp(m, "LINK") == 0) {
-		d_printf("%s/%s.html", cnf_lookup("baseurl"), e->name);
+		d_printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
 	} else if (strcmp(m, "DATE") == 0) {
 		d_printf("%s", ctime(&e->pubdate));
 	} else if (strcmp(m, "BODY") == 0) {
@@ -266,17 +266,17 @@ render_front(const char *m, const struct entry *e)
 
 	if (strcmp(m, "STORY") == 0) {
 		snprintf(fn, sizeof(fn), "%s/story.html",
-		    cnf_lookup("htmldir"));
+		    cqg(&config, "htmldir"));
 		for (i = 0; newest[i].name[0]; ++i) {
 			render_html(fn, &render_front_story, &newest[i]);
 		}
 	} else if (strcmp(m, "HEADER") == 0) {
 		snprintf(fn, sizeof(fn), "%s/header.html",
-		    cnf_lookup("htmldir"));
+		    cqg(&config, "htmldir"));
 		render_html(fn, NULL, NULL);
 	} else if (strcmp(m, "FOOTER") == 0) {
 		snprintf(fn, sizeof(fn), "%s/footer.html",
-		    cnf_lookup("htmldir"));
+		    cqg(&config, "htmldir"));
 		render_html(fn, NULL, NULL);
 	} else {
 		d_printf("render_front: unknown macro '%s'<br>\n", m);
@@ -295,7 +295,7 @@ render_front_story(const char *m, const struct entry *e)
 	} else if (strcmp(m, "DATE") == 0) {
 		d_printf("%s", ctime(&e->pubdate));
 	} else if (strcmp(m, "BASEURL") == 0) {
-		d_printf("%s", cnf_lookup("baseurl"));
+		d_printf("%s", cqg(&config, "baseurl"));
 	} else if (strcmp(m, "ARTICLE") == 0) {
 		if (e->parent[0]) {
 			d_printf("%s/", e->parent);
@@ -486,12 +486,13 @@ main(void)
 
 	gettimeofday(&tx, NULL);
 	umask(007);
-	if (configfile_parse(conffile, config_queue_cb) == -1) {
+	cez_queue_init(&config);
+	if (configfile_parse(conffile, &config) == -1) {
 		msg("error load_conf: file '%s'", conffile);
 		render_error("load_conf: file '%s'", conffile);
 		goto done;
 	}
-	if ((s = config_queue_check(params)) != NULL) {
+	if ((s = cez_queue_check(&config, params)) != NULL) {
 		render_error("%s is missing", s);
 		goto done;
 	}
@@ -585,17 +586,17 @@ main(void)
 
 	char fn[1024];
 	struct entry e;
-	strlcpy(fn, cnf_lookup("datadir"), sizeof(fn));
+	strlcpy(fn, cqg(&config, "datadir"), sizeof(fn));
 	find_articles(fn, newest, 10);
-	printf("%s\r\n\r\n", cnf_lookup("ct_html"));
+	printf("%s\r\n\r\n", cqg(&config, "ct_html"));
 	fflush(stdout);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		snprintf(fn, sizeof(fn), "%s/summary.rss",
-		    cnf_lookup("htmldir"));
+		    cqg(&config, "htmldir"));
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_rss, &e);
 	} else {
-		snprintf(fn, sizeof(fn), "%s/main.html", cnf_lookup("htmldir"));
+		snprintf(fn, sizeof(fn), "%s/main.html", cqg(&config, "htmldir"));
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_front, &e);
 	}
@@ -610,7 +611,7 @@ done:
 		fflush(stdout);
 	}
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
-	config_queue_purge();
+	cez_queue_purge(&config);
 	return (0);
 }
 
@@ -623,9 +624,9 @@ msg(const char *fmt, ...)
 	time_t t = time(NULL);
 	struct tm *tm = gmtime(&t);
 
-	if ((f = fopen(cnf_lookup("logfile"), "ae")) == NULL) {
+	if ((f = fopen(cqg(&config, "logfile"), "ae")) == NULL) {
 		fprintf(stderr, "%s: cannot open logfile: %s\n", __func__,
-							cnf_lookup("logfile"));
+		    cqg(&config, "logfile"));
 		return;
 	}
 	fprintf(f, "%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d %s %s %s v%d [%u] ",
@@ -646,7 +647,7 @@ file_is_excluded(const char *name)
 	FILE *f;
 	char s[8192], *p;
 
-	if (( f = fopen(cnf_lookup("excludefile"), "re")) == NULL) {
+	if (( f = fopen(cqg(&config, "excludefile"), "re")) == NULL) {
 		msg("Cannot open exclude file.");
 		return 0;
 	}
