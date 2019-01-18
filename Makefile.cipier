@@ -16,13 +16,13 @@ GH_PROJECT=	nlist:nlist \
 		libcez:libcez
 GH_TAGNAME=	${CEZ_VERSION}:libcez
 
-CFLAGS+=	-I${WRKSRC_libcez}/src/config \
+CFLAGS+=	-I${WRKSRC_libcez}/src/queue \
 		-I${WRKSRC_libcez}/src/misc
-LDFLAGS+=	-L${WRKSRC_libcez}/src/config \
+LDFLAGS+=	-L${WRKSRC_libcez}/src/queue \
 		-L${WRKSRC_libcez}/src/misc
 
 pre-configure:
-	@(cd ${WRKSRC_libcez}/src/config && ${SETENV} ${MAKE_ENV} ${MAKE})
+	@(cd ${WRKSRC_libcez}/src/queue && ${SETENV} ${MAKE_ENV} ${MAKE})
 	@(cd ${WRKSRC_libcez}/src/misc && ${SETENV} ${MAKE_ENV} ${MAKE})
 
 .include <bsd.port.mk>
