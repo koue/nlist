@@ -4,7 +4,7 @@ Simple blog written in C inspired by blosxom and undeadly.org
 How to use on FreeBSD
 
 # git clone https://github.com/koue/libcez
-# cd libcez/src/config && make && make install
+# cd libcez/src/queue && make && make install
 # cd libcez/src/misc && make && make install
 # git clone https://github.com/koue/nlist
 # cd nlist && make && make chroot && make install
