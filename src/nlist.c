@@ -49,7 +49,7 @@
 #include <cez_queue.h>
 #include <cez_misc.h>
 
-#define	VERSION	1004
+#define	VERSION	1005
 
 struct entry {
 	char	fn[MAXNAMLEN + 1];	/* absolute path of the file */
@@ -485,58 +485,49 @@ main(void)
 	int i, query = 0;
 
 	gettimeofday(&tx, NULL);
+	if (chdir("/tmp")) {
+		fprintf(stderr, "error main: chdir: /tmp: %s", strerror(errno));
+		return (0);
+	}
 	umask(007);
+
 	cez_queue_init(&config);
 	if (configfile_parse(conffile, &config) == -1) {
-		msg("error load_conf: file '%s'", conffile);
-		render_error("load_conf: file '%s'", conffile);
+		fprintf(stderr, "error load_conf: file '%s'\n", conffile);
 		goto done;
 	}
 	if ((s = cez_queue_check(&config, params)) != NULL) {
-		render_error("%s is missing", s);
+		fprintf(stderr, "config check: %s is missing\n", s);
 		goto done;
 	}
-	if (chdir("/tmp")) {
-		msg("error main: chdir: /tmp: %s", strerror(errno));
-		render_error("chdir: /tmp: %s", strerror(errno));
-		goto done;
-	}
-	if (!access(corefile, R_OK)) {
-		struct stat sb;
 
-		if (stat(corefile, &sb)) {
-			msg("error main: stat: %s: %s", corefile,
-			    strerror(errno));
-		} else {
-			char fn[1024];
-			struct tm *tm = gmtime(&sb.st_mtime);
-
-			snprintf(fn, sizeof(fn),
-			    "%s.%4.4d%2.2d%2.2d%2.2d%2.2d%2.2d", corefile,
-			    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-			    tm->tm_hour, tm->tm_min, tm->tm_sec);
-			if (rename(corefile, fn)) {
-				msg("error main: rename: %s: %s: %s", corefile,
-				    fn, strerror(errno));
+	if ((s = getenv("HTTP_ACCEPT_ENCODING")) != NULL) {
+		char *p = strstr(s, "gzip");
+		if (p != NULL && ((strncmp(p, "gzip;q=0", 8) != 0) ||
+		    strtol(p + 7, (char **)NULL, 10) > 0.0)) {
+			gz = gzdopen(fileno(stdout), "wb9");
+			if (gz == NULL) {
+				msg("error main: gzdopen");
 			} else {
-				msg("warning main: core file %s renamed to %s",
-				    corefile, fn);
+				printf("Content-Encoding: gzip\r\n");
 			}
 		}
 	}
+
 	if ((s = getenv("QUERY_STRING")) != NULL) {
 		query = 1;
 		if (strlen(s) > 64) {
-			printf("Status: 400\r\n\r\n You are trying to send very long query!\n");
+			printf("Status: 400\r\n\r\n You are trying to send very "
+			    "long query!\n");
 			fflush(stdout);
-			return (0);
+			goto done;
 
 		} else if (strstr(s, "&amp;") != NULL) {
 			msg("warning main: escaped query '%s'", s);
 			printf("Status: 400\r\n\r\nHTML escaped ampersand in cgi "
 			    "query string \"%s\"\n", s);
 			fflush(stdout);
-			return (0);
+			goto done;
 		} else {
 			for (i = 0; i < strlen(s); i++) {
 				/*
@@ -552,9 +543,10 @@ main(void)
 					if ((i == (strlen(s)-5)) && (s[i] == '.')) {
 						continue;
 					}
-                                	printf("Status: 400\r\n\r\nYou are trying to send wrong query!\n");
+					printf("Status: 400\r\n\r\nYou are trying "
+					    "to send wrong query!\n");
 	                                fflush(stdout);
-        	                        return (0);
+					goto done;
                 	        }
                 	}
 		}
@@ -563,24 +555,10 @@ main(void)
 	if ((s = getenv("IF_MODIFIED_SINCE")) != NULL) {
 		if_modified_since = convert_rfc822_time(s);
 		if (if_modified_since <= 0) {
-			if_modified_since =
-			    (time_t)strtoul(s, NULL, 10);
+			if_modified_since = (time_t)strtoul(s, NULL, 10);
 		}
 		if (!if_modified_since) {
 			msg("warning main: invalid IF_MODIFIED_SINCE '%s'", s);
-		}
-	}
-	if ((s = getenv("HTTP_ACCEPT_ENCODING")) != NULL) {
-		char *p = strstr(s, "gzip");
-
-		if (p != NULL && ((strncmp(p, "gzip;q=0", 8) != 0) ||
-		    strtol(p + 7, (char **)NULL, 10) > 0.0)) {
-			gz = gzdopen(fileno(stdout), "wb9");
-			if (gz == NULL) {
-				msg("error main: gzdopen");
-			} else {
-				printf("Content-Encoding: gzip\r\n");
-			}
 		}
 	}
 
