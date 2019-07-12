@@ -49,7 +49,7 @@
 #include <cez_queue.h>
 #include <cez_misc.h>
 
-#define	VERSION	1005
+#define	VERSION	1006
 
 struct entry {
 	char	fn[MAXNAMLEN + 1];	/* absolute path of the file */
@@ -566,18 +566,19 @@ main(void)
 	struct entry e;
 	strlcpy(fn, cqg(&config, "datadir"), sizeof(fn));
 	find_articles(fn, newest, 10);
-	printf("%s\r\n\r\n", cqg(&config, "ct_html"));
-	fflush(stdout);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
+		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
 		snprintf(fn, sizeof(fn), "%s/summary.rss",
 		    cqg(&config, "htmldir"));
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_rss, &e);
 	} else {
+		printf("%s\r\n\r\n", cqg(&config, "ct_html"));
 		snprintf(fn, sizeof(fn), "%s/main.html", cqg(&config, "htmldir"));
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_front, &e);
 	}
+	fflush(stdout);
 
 done:
 	if (gz != NULL) {
