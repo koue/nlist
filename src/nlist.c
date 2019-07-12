@@ -494,11 +494,11 @@ main(void)
 	cez_queue_init(&config);
 	if (configfile_parse(conffile, &config) == -1) {
 		fprintf(stderr, "error load_conf: file '%s'\n", conffile);
-		goto done;
+		goto purge;
 	}
 	if ((s = cez_queue_check(&config, params)) != NULL) {
 		fprintf(stderr, "config check: %s is missing\n", s);
-		goto done;
+		goto purge;
 	}
 
 	if ((s = getenv("HTTP_ACCEPT_ENCODING")) != NULL) {
@@ -589,6 +589,7 @@ done:
 		fflush(stdout);
 	}
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
+purge:
 	cez_queue_purge(&config);
 	return (0);
 }
