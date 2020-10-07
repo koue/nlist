@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2019 Nikola Kolev <koue@chaosophia.net>
+ * Copyright (c) 2011-2020 Nikola Kolev <koue@chaosophia.net>
  * Copyright (c) 2004-2006 Daniel Hartmeier. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,7 +49,7 @@
 #include <cez_queue.h>
 #include <cez_misc.h>
 
-#define	VERSION	1006
+#include "nlist.h"
 
 struct entry {
 	char	fn[MAXNAMLEN + 1];	/* absolute path of the file */
@@ -59,10 +59,10 @@ struct entry {
 	char	title[128];		/* first line of the article */
 };
 
-static const char *conffile = "/opt/koue.chaosophia.net/nlist/nlist.conf";
-static const char *corefile = "/opt/koue.chaosophia.net/nlist/nlist.core";
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
+static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefile",
+    NULL };
 static struct cez_queue config;
 
 static struct 	entry newest[64];
@@ -87,6 +87,18 @@ static void	render_front(const char *m, const struct entry *e);
 static void	render_front_story(const char *m, const struct entry *e);
 static int	vf_parent(const char *p, int l, const char *f);
 static int	vf_article(const char *a, const char *fp, const char *fn);
+
+static int	skip_prefix(const char *str, const char *prefix,
+			    const char **out)
+{
+	do {
+		if (!*prefix) {
+			*out = str;
+			return (1);
+		}
+	} while (*str++ == *prefix++);
+	return (0);
+}
 
 static int
 vf_parent(const char *p, int l, const char *f)
@@ -477,12 +489,13 @@ compare_name_des_fts(const FTSENT * const *a, const FTSENT * const *b)
 }
 
 int
-main(void)
+main(int argc, const char **argv)
 {
 	const char *s;
+	char valgrindstr[256], conffile[256];
 	static struct timeval tx;
 	time_t if_modified_since = 0;
-	int i, query = 0;
+	int i, query = 0, valgrind = 0;
 
 	gettimeofday(&tx, NULL);
 	if (chdir("/tmp")) {
@@ -491,14 +504,37 @@ main(void)
 	}
 	umask(007);
 
+	for (i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--valgrind") == 0) {
+			valgrind = 1;
+		}
+	}
+
 	cez_queue_init(&config);
+	if (valgrind) {
+		snprintf(conffile, sizeof(conffile), "%s/%s", CHROOT, CONFFILE);
+	} else {
+		snprintf(conffile, sizeof(conffile), "%s", CONFFILE);
+	}
 	if (configfile_parse(conffile, &config) == -1) {
-		fprintf(stderr, "error load_conf: file '%s'\n", conffile);
+		fprintf(stderr, "error load_conf: file '%s'\n", conffile );
 		goto purge;
 	}
 	if ((s = cez_queue_check(&config, params)) != NULL) {
 		fprintf(stderr, "config check: %s is missing\n", s);
 		goto purge;
+	}
+
+	if (valgrind) {
+		for (i = 0; valgrindme[i] != NULL; ++i) {
+			snprintf(valgrindstr, sizeof(valgrindstr), "%s/%s",
+				    CHROOT, cqg(&config, valgrindme[i]));
+			if (cqu(&config, params[i], valgrindstr) == -1) {
+				fprintf(stderr, "Cannot adjust %s\n. Exit.",
+					    valgrindme[i]);
+				exit (1);
+			}
+		}
 	}
 
 	if ((s = getenv("HTTP_ACCEPT_ENCODING")) != NULL) {
