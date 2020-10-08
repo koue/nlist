@@ -51,27 +51,20 @@
 
 #include "nlist.h"
 
-struct entry {
-	char	fn[MAXNAMLEN + 1];	/* absolute path of the file */
-	time_t	pubdate;		/* date of publication */
-	char	name[64];		/* name of the article */
-	char	parent[64];		/* parent directory ot the article */
-	char	title[128];		/* first line of the article */
-};
-
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
 static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefile",
     NULL };
 static struct cez_queue config;
 
-static struct 	entry newest[64];
+static struct feed feed;
+
 static gzFile	gz = NULL;
 
 static int	compare_name_des_fts(const FTSENT * const *a,
 		    const FTSENT * const *b);
-static void	find_articles(const char *path, struct entry *a, int size);
-static int	file_get_attr(FTSENT *fent, struct entry *e);
+static void	find_articles(const char *path, int size);
+static struct entry *file_get_attr(FTSENT *fent);
 static int	file_is_excluded(const char *name);
 static int	file_is_txt(const char *name);
 static int	file_read(struct entry *e);
@@ -88,8 +81,29 @@ static void	render_front_story(const char *m, const struct entry *e);
 static int	vf_parent(const char *p, int l, const char *f);
 static int	vf_article(const char *a, const char *fp, const char *fn);
 
-static int	skip_prefix(const char *str, const char *prefix,
-			    const char **out)
+void
+feed_add(struct entry *entry)
+{
+	TAILQ_INSERT_TAIL(&feed.head, entry, item);
+}
+
+void
+feed_purge(void)
+{
+	struct entry *current;
+	while (!TAILQ_EMPTY(&feed.head)) {
+		current = TAILQ_FIRST(&feed.head);
+		free(current->fn);
+		free(current->name);
+		free(current->parent);
+		free(current->title);
+		TAILQ_REMOVE(&feed.head, current, item);
+		free(current);
+	}
+}
+
+static int
+skip_prefix(const char *str, const char *prefix, const char **out)
 {
 	do {
 		if (!*prefix) {
@@ -124,26 +138,50 @@ file_is_txt(const char *name)
 	}
 }
 
-static int
-file_get_attr(FTSENT *fent, struct entry *e)
+static struct entry *
+file_get_attr(FTSENT *fent)
 {
 	char *pos = fent->fts_name;
-	e->fn[0] = 0;
-	strlcpy(e->fn, fent->fts_path, sizeof(e->fn));
-	if (file_read(e)) {
-		return (-1);
+	struct entry *current;
+
+	if ((current = calloc(1, sizeof(*current))) == NULL) {
+		fprintf(stderr, "[ERROR] %s: %s\n", __func__, strerror(errno));
+		exit(1);
+	}
+	if ((current->fn = strdup(fent->fts_path)) == NULL) {
+		free(current);
+		fprintf(stderr, "[ERROR] %s: %s\n", __func__, strerror(errno));
+		exit(1);
+	}
+	if (file_read(current)) {
+		free(current->fn);
+		free(current);
+		exit(1);
 	}
 	/* if article in main directory don't use the parent */
 	if (strcmp(fent->fts_parent->fts_name, "data") != 0) {
-		strlcpy(e->parent, fent->fts_parent->fts_name, sizeof(e->parent));
+		if ((current->parent = strdup(fent->fts_parent->fts_name)) == NULL) {
+			free(current->fn);
+			free(current->title);
+			free(current);
+			exit(1);
+		}
+	} else {
+		current->parent = NULL;
 	}
 	while (*pos && *pos != '.') {
 		pos++;
 	}
 	*pos = 0;
-	strlcpy(e->name, fent->fts_name, sizeof(e->name));
-	e->pubdate = fent->fts_statp->st_mtime;
-	return (0);
+	if ((current->name = strdup(fent->fts_name)) == NULL) {
+		free(current->fn);
+		free(current->title);
+		free(current->parent);
+		free(current);
+		exit(1);
+	}
+	current->pubdate = fent->fts_statp->st_mtime;
+	return(current);
 }
 
 static void
@@ -226,13 +264,14 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 static void
 render_rss(const char *m, const struct entry *e)
 {
+	struct entry *current;
+
 	if (strcmp(m, "ITEMS") == 0) {
 		char fn[1024];
-		int i;
 		snprintf(fn, sizeof(fn), "%s/summary_item.rss",
 		    cqg(&config, "htmldir"));
-		for (i = 0; newest[i].name[0]; ++i) {
-			render_html(fn, &render_rss_item, &newest[i]);
+		TAILQ_FOREACH(current, &feed.head, item) {
+			render_html(fn, &render_rss_item, current);
 		}
 	} else {
 		d_printf("render_rss: unknown macro '%s'\n", m);
@@ -274,13 +313,13 @@ static void
 render_front(const char *m, const struct entry *e)
 {
 	char fn[1024];
-	int i;
+	struct entry *current;
 
 	if (strcmp(m, "STORY") == 0) {
 		snprintf(fn, sizeof(fn), "%s/story.html",
 		    cqg(&config, "htmldir"));
-		for (i = 0; newest[i].name[0]; ++i) {
-			render_html(fn, &render_front_story, &newest[i]);
+		TAILQ_FOREACH(current, &feed.head, item) {
+			render_html(fn, &render_front_story, current);
 		}
 	} else if (strcmp(m, "HEADER") == 0) {
 		snprintf(fn, sizeof(fn), "%s/header.html",
@@ -309,7 +348,7 @@ render_front_story(const char *m, const struct entry *e)
 	} else if (strcmp(m, "BASEURL") == 0) {
 		d_printf("%s", cqg(&config, "baseurl"));
 	} else if (strcmp(m, "ARTICLE") == 0) {
-		if (e->parent[0]) {
+		if (e->parent) {
 			d_printf("%s/", e->parent);
 		}
 		d_printf("%s", e->name);
@@ -333,17 +372,17 @@ render_front_story(const char *m, const struct entry *e)
 }
 
 static void
-find_articles(const char *path, struct entry *a, int size)
+find_articles(const char *path, int size)
 {
 	FTS *fts;
 	FTSENT *e;
 	char * const path_argv[] = { (char*)path, NULL };
 	int i = 0;
 	char *tmp, *pos, article[128], parent[128], query[256];
+	struct entry *entry;
 
 	parent[0] = article[0] = 0;
 
-	memset(a, 0, size * sizeof(*a));
 	if ((fts = fts_open(path_argv, FTS_LOGICAL, compare_name_des_fts))
 	    == NULL) {
 		d_printf("fts_open: %s: %s<br>\n", path, strerror(errno));
@@ -398,9 +437,10 @@ find_articles(const char *path, struct entry *a, int size)
 		    && vf_parent(parent, e->fts_level, e->fts_parent->fts_name)
 		    && vf_article(article, e->fts_path, e->fts_name)
 		    && (file_is_txt(e->fts_name) == 0 )) {
-			if (file_get_attr(e, &a[i]) == -1) {
-				memset(&a[i], 0, sizeof(a[i]));
+			if ((entry = file_get_attr(e)) == NULL) {
 				continue;
+			} else {
+				feed_add(entry);
 			}
 			i++;
 		}
@@ -414,16 +454,18 @@ file_read(struct entry *e)
 	FILE *f;
 	char s[8192];
 
-	e->name[0] = e->parent[0] = e->title[0] = 0;
 	if ((f = fopen(e->fn, "re")) == NULL) {
-		return (1);
+		return (-1);
 	}
 
 	/* read first line - article title */
 	fgets(s, sizeof(s), f);
 	if (s[0]) {
 		s[strlen(s) - 1] = 0;
-		strlcpy(e->title, s, sizeof(e->title));
+		if ((e->title = strdup(s)) == NULL) {
+			fprintf(stderr, "[ERROR] %s: %s\n", __func__, strerror(errno));
+			return (-1);
+		}
 	}
 
 	fclose(f);
@@ -598,10 +640,12 @@ main(int argc, const char **argv)
 		}
 	}
 
+	TAILQ_INIT(&feed.head);
+
 	char fn[1024];
 	struct entry e;
 	strlcpy(fn, cqg(&config, "datadir"), sizeof(fn));
-	find_articles(fn, newest, 10);
+	find_articles(fn, 10);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
 		snprintf(fn, sizeof(fn), "%s/summary.rss",
@@ -627,6 +671,7 @@ done:
 	}
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
 purge:
+	feed_purge();
 	cez_queue_purge(&config);
 	return (0);
 }

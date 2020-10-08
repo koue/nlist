@@ -31,12 +31,27 @@
 #ifndef _NLIST_H
 #define _NLIST_H
 
-#define	VERSION		1007
+#include <sys/queue.h>
+
+#define	VERSION		2001
 
 #define DOMAIN		"koue.chaosophia.net"
 #define CONFFILE	"/etc/nlist.conf"
 #define	CHROOT		"/var/www"
 #define MYUSER		"www"
 #define MYGROUP		"www"
+
+struct entry {
+	TAILQ_ENTRY(entry) item;
+	char *fn;
+	char *name;
+	char *parent;
+	char *title;
+	time_t pubdate;
+};
+
+struct feed {
+	TAILQ_HEAD(, entry) head;
+};
 
 #endif
