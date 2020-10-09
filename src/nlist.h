@@ -35,11 +35,11 @@
 
 #define	VERSION		2001
 
-#define DOMAIN		"koue.chaosophia.net"
-#define CONFFILE	"/etc/nlist.conf"
+#define	DOMAIN		"koue.chaosophia.net"
+#define	CONFFILE	"/etc/nlist.conf"
 #define	CHROOT		"/var/www"
-#define MYUSER		"www"
-#define MYGROUP		"www"
+#define	MYUSER		"www"
+#define	MYGROUP		"www"
 
 struct entry {
 	TAILQ_ENTRY(entry) item;

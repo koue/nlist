@@ -51,6 +51,8 @@
 
 #include "nlist.h"
 
+typedef	void (*render_cb)(const char *, const struct entry *);
+
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
 static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefile",
@@ -61,33 +63,91 @@ static struct feed feed;
 
 static gzFile	gz = NULL;
 
-static int	compare_name_des_fts(const FTSENT * const *a,
-		    const FTSENT * const *b);
-static void	find_articles(const char *path, int size);
-static struct entry *file_get_attr(FTSENT *fent);
-static int	file_is_excluded(const char *name);
-static int	file_is_txt(const char *name);
-static int	file_read(struct entry *e);
-static char	*html_esc(const char *s, char *d, size_t len, int allownl);
-static void	msg(const char *fmt, ...);
-typedef	void 	(*render_cb)(const char *, const struct entry *);
-static void	render_error(const char *fmt, ...);
-static int	render_html(const char *html_fn, render_cb r,
-		    const struct entry *e);
-static void	render_rss(const char *m, const struct entry *e);
-static void	render_rss_item(const char *m, const struct entry *e);
-static void	render_front(const char *m, const struct entry *e);
-static void	render_front_story(const char *m, const struct entry *e);
-static int	vf_parent(const char *p, int l, const char *f);
-static int	vf_article(const char *a, const char *fp, const char *fn);
+static void
+msg(const char *fmt, ...)
+{
+	extern char *__progname;
+	FILE *f;
+	va_list ap;
+	time_t t = time(NULL);
+	struct tm *tm = gmtime(&t);
 
-void
+	if ((f = fopen(cqg(&config, "logfile"), "ae")) == NULL) {
+		fprintf(stderr, "%s: cannot open logfile: %s\n", __func__,
+		    cqg(&config, "logfile"));
+		return;
+	}
+	fprintf(f, "%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d %s %s %s v%d [%u] ",
+	    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+	    tm->tm_hour, tm->tm_min, tm->tm_sec, getenv("REMOTE_ADDR"), "-" ,
+	    __progname, VERSION, (unsigned)getpid());
+	va_start(ap, fmt);
+	vfprintf(f, fmt, ap);
+	va_end(ap);
+	fprintf(f, "\n");
+	fflush(f);
+	fclose(f);
+}
+
+static char *
+html_esc(const char *s, char *d, size_t len, int allownl)
+{
+	size_t p;
+
+	for (p = 0; *s && p < len - 1; ++s) {
+		switch (*s) {
+		case '&':
+			if (p < len - 5) {
+				strlcpy(d + p, "&amp;", 6);
+				p += 5;
+			}
+			break;
+		case '\"':
+			if (p < len - 6) {
+				strlcpy(d + p, "&quot;", 7);
+				p += 6;
+			}
+			break;
+		case '<':
+			if (p < len - 4) {
+				strlcpy(d + p, "&lt;", 5);
+				p += 4;
+			}
+			break;
+		case '>':
+			if (p < len - 4) {
+				strlcpy(d + p, "&gt;", 5);
+				p += 4;
+			}
+			break;
+		case '\r':
+		case '\n':
+			if (!allownl) {
+				/* skip */
+				break;
+			} else if (allownl > 1 && *s == '\r') {
+				if (p < len - 4) {
+					strlcpy(d + p, "<br>", 5);
+					p += 4;
+				}
+				break;
+			}
+			/* else fall through */
+		default:
+			d[p++] = *s;
+		}
+	}
+	d[p] = 0;
+	return (d);
+}
+
+static void
 feed_add(struct entry *entry)
 {
 	TAILQ_INSERT_TAIL(&feed.head, entry, item);
 }
 
-void
+static void
 feed_purge(void)
 {
 	struct entry *current;
@@ -121,6 +181,27 @@ vf_parent(const char *p, int l, const char *f)
 }
 
 static int
+file_is_excluded(const char *name)
+{
+	FILE *f;
+	char s[8192], *p;
+
+	if (( f = fopen(cqg(&config, "excludefile"), "re")) == NULL) {
+		msg("Cannot open exclude file.");
+		return 0;
+	}
+	while (fgets(s, sizeof(s), f)) {
+		s[strlen(s) - 1] = 0;
+		if ((p = strstr(name, s)) != NULL) {
+			fclose(f);
+			return (1);
+		}
+	}
+	fclose(f);
+	return (0);
+}
+
+static int
 vf_article(const char *a, const char *fp, const char *fn)
 {
 	return(((strlen(a) == 0) && (file_is_excluded(fp) == 0)) ||
@@ -136,6 +217,30 @@ file_is_txt(const char *name)
 	} else {
 		return (-1);
 	}
+}
+
+static int
+file_read(struct entry *e)
+{
+	FILE *f;
+	char s[8192];
+
+	if ((f = fopen(e->fn, "re")) == NULL) {
+		return (-1);
+	}
+
+	/* read first line - article title */
+	fgets(s, sizeof(s), f);
+	if (s[0]) {
+		s[strlen(s) - 1] = 0;
+		if ((e->title = strdup(s)) == NULL) {
+			fprintf(stderr, "[ERROR] %s: %s\n", __func__, strerror(errno));
+			return (-1);
+		}
+	}
+
+	fclose(f);
+	return (0);
 }
 
 static struct entry *
@@ -262,23 +367,6 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 }
 
 static void
-render_rss(const char *m, const struct entry *e)
-{
-	struct entry *current;
-
-	if (strcmp(m, "ITEMS") == 0) {
-		char fn[1024];
-		snprintf(fn, sizeof(fn), "%s/summary_item.rss",
-		    cqg(&config, "htmldir"));
-		TAILQ_FOREACH(current, &feed.head, item) {
-			render_html(fn, &render_rss_item, current);
-		}
-	} else {
-		d_printf("render_rss: unknown macro '%s'\n", m);
-	}
-}
-
-static void
 render_rss_item(const char *m, const struct entry *e)
 {
 	char d[256];
@@ -310,27 +398,19 @@ render_rss_item(const char *m, const struct entry *e)
 }
 
 static void
-render_front(const char *m, const struct entry *e)
+render_rss(const char *m, const struct entry *e)
 {
-	char fn[1024];
 	struct entry *current;
 
-	if (strcmp(m, "STORY") == 0) {
-		snprintf(fn, sizeof(fn), "%s/story.html",
+	if (strcmp(m, "ITEMS") == 0) {
+		char fn[1024];
+		snprintf(fn, sizeof(fn), "%s/summary_item.rss",
 		    cqg(&config, "htmldir"));
 		TAILQ_FOREACH(current, &feed.head, item) {
-			render_html(fn, &render_front_story, current);
+			render_html(fn, &render_rss_item, current);
 		}
-	} else if (strcmp(m, "HEADER") == 0) {
-		snprintf(fn, sizeof(fn), "%s/header.html",
-		    cqg(&config, "htmldir"));
-		render_html(fn, NULL, NULL);
-	} else if (strcmp(m, "FOOTER") == 0) {
-		snprintf(fn, sizeof(fn), "%s/footer.html",
-		    cqg(&config, "htmldir"));
-		render_html(fn, NULL, NULL);
 	} else {
-		d_printf("render_front: unknown macro '%s'<br>\n", m);
+		d_printf("render_rss: unknown macro '%s'\n", m);
 	}
 }
 
@@ -369,6 +449,37 @@ render_front_story(const char *m, const struct entry *e)
 	} else {
 		d_printf("render_front_story: unknown macro '%s'<br>\n", m);
 	}
+}
+
+static void
+render_front(const char *m, const struct entry *e)
+{
+	char fn[1024];
+	struct entry *current;
+
+	if (strcmp(m, "STORY") == 0) {
+		snprintf(fn, sizeof(fn), "%s/story.html",
+		    cqg(&config, "htmldir"));
+		TAILQ_FOREACH(current, &feed.head, item) {
+			render_html(fn, &render_front_story, current);
+		}
+	} else if (strcmp(m, "HEADER") == 0) {
+		snprintf(fn, sizeof(fn), "%s/header.html",
+		    cqg(&config, "htmldir"));
+		render_html(fn, NULL, NULL);
+	} else if (strcmp(m, "FOOTER") == 0) {
+		snprintf(fn, sizeof(fn), "%s/footer.html",
+		    cqg(&config, "htmldir"));
+		render_html(fn, NULL, NULL);
+	} else {
+		d_printf("render_front: unknown macro '%s'<br>\n", m);
+	}
+}
+
+static int
+compare_name_des_fts(const FTSENT * const *a, const FTSENT * const *b)
+{
+	return (strcmp((*b)->fts_name, (*a)->fts_name));
 }
 
 static void
@@ -446,88 +557,6 @@ find_articles(const char *path, int size)
 		}
 	}
 	fts_close(fts);
-}
-
-static int
-file_read(struct entry *e)
-{
-	FILE *f;
-	char s[8192];
-
-	if ((f = fopen(e->fn, "re")) == NULL) {
-		return (-1);
-	}
-
-	/* read first line - article title */
-	fgets(s, sizeof(s), f);
-	if (s[0]) {
-		s[strlen(s) - 1] = 0;
-		if ((e->title = strdup(s)) == NULL) {
-			fprintf(stderr, "[ERROR] %s: %s\n", __func__, strerror(errno));
-			return (-1);
-		}
-	}
-
-	fclose(f);
-	return (0);
-}
-
-static char *
-html_esc(const char *s, char *d, size_t len, int allownl)
-{
-	size_t p;
-
-	for (p = 0; *s && p < len - 1; ++s) {
-		switch (*s) {
-		case '&':
-			if (p < len - 5) {
-				strlcpy(d + p, "&amp;", 6);
-				p += 5;
-			}
-			break;
-		case '\"':
-			if (p < len - 6) {
-				strlcpy(d + p, "&quot;", 7);
-				p += 6;
-			}
-			break;
-		case '<':
-			if (p < len - 4) {
-				strlcpy(d + p, "&lt;", 5);
-				p += 4;
-			}
-			break;
-		case '>':
-			if (p < len - 4) {
-				strlcpy(d + p, "&gt;", 5);
-				p += 4;
-			}
-			break;
-		case '\r':
-		case '\n':
-			if (!allownl) {
-				/* skip */
-				break;
-			} else if (allownl > 1 && *s == '\r') {
-				if (p < len - 4) {
-					strlcpy(d + p, "<br>", 5);
-					p += 4;
-				}
-				break;
-			}
-			/* else fall through */
-		default:
-			d[p++] = *s;
-		}
-	}
-	d[p] = 0;
-	return (d);
-}
-
-static int
-compare_name_des_fts(const FTSENT * const *a, const FTSENT * const *b)
-{
-	return (strcmp((*b)->fts_name, (*a)->fts_name));
 }
 
 int
@@ -673,52 +702,5 @@ done:
 purge:
 	feed_purge();
 	cez_queue_purge(&config);
-	return (0);
-}
-
-static void
-msg(const char *fmt, ...)
-{
-	extern char *__progname;
-	FILE *f;
-	va_list ap;
-	time_t t = time(NULL);
-	struct tm *tm = gmtime(&t);
-
-	if ((f = fopen(cqg(&config, "logfile"), "ae")) == NULL) {
-		fprintf(stderr, "%s: cannot open logfile: %s\n", __func__,
-		    cqg(&config, "logfile"));
-		return;
-	}
-	fprintf(f, "%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d %s %s %s v%d [%u] ",
-	    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-	    tm->tm_hour, tm->tm_min, tm->tm_sec, getenv("REMOTE_ADDR"), "-" ,
-	    __progname, VERSION, (unsigned)getpid());
-	va_start(ap, fmt);
-	vfprintf(f, fmt, ap);
-	va_end(ap);
-	fprintf(f, "\n");
-	fflush(f);
-	fclose(f);
-}
-
-static int
-file_is_excluded(const char *name)
-{
-	FILE *f;
-	char s[8192], *p;
-
-	if (( f = fopen(cqg(&config, "excludefile"), "re")) == NULL) {
-		msg("Cannot open exclude file.");
-		return 0;
-	}
-	while (fgets(s, sizeof(s), f)) {
-		s[strlen(s) - 1] = 0;
-		if ((p = strstr(name, s)) != NULL) {
-			fclose(f);
-			return (1);
-		}
-	}
-	fclose(f);
 	return (0);
 }
