@@ -46,6 +46,7 @@
 #include <unistd.h>
 #include <zlib.h>
 
+#include <cez_core_pool.h>
 #include <cez_queue.h>
 #include <cez_misc.h>
 
@@ -57,8 +58,8 @@ static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
 static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefile",
     NULL };
-static struct cez_queue config;
 
+static struct cez_queue config;
 static struct feed feed;
 
 static gzFile	gz = NULL;
@@ -147,21 +148,6 @@ feed_add(struct entry *entry)
 	TAILQ_INSERT_TAIL(&feed.head, entry, item);
 }
 
-static void
-feed_purge(void)
-{
-	struct entry *current;
-	while (!TAILQ_EMPTY(&feed.head)) {
-		current = TAILQ_FIRST(&feed.head);
-		free(current->fn);
-		free(current->name);
-		free(current->parent);
-		free(current->title);
-		TAILQ_REMOVE(&feed.head, current, item);
-		free(current);
-	}
-}
-
 static int
 skip_prefix(const char *str, const char *prefix, const char **out)
 {
@@ -188,7 +174,7 @@ file_is_excluded(const char *name)
 
 	if (( f = fopen(cqg(&config, "excludefile"), "re")) == NULL) {
 		msg("Cannot open exclude file.");
-		return 0;
+		return (0);
 	}
 	while (fgets(s, sizeof(s), f)) {
 		s[strlen(s) - 1] = 0;
@@ -220,7 +206,7 @@ file_is_txt(const char *name)
 }
 
 static int
-file_read(struct entry *e)
+file_read(struct pool *pool, struct entry *e)
 {
 	FILE *f;
 	char s[8192];
@@ -233,10 +219,7 @@ file_read(struct entry *e)
 	fgets(s, sizeof(s), f);
 	if (s[0]) {
 		s[strlen(s) - 1] = 0;
-		if ((e->title = strdup(s)) == NULL) {
-			fprintf(stderr, "[ERROR] %s: %s\n", __func__, strerror(errno));
-			return (-1);
-		}
+		e->title = pool_strdup(pool, s);
 	}
 
 	fclose(f);
@@ -244,33 +227,22 @@ file_read(struct entry *e)
 }
 
 static struct entry *
-file_get_attr(FTSENT *fent)
+file_get_attr(struct pool *pool, FTSENT *fent)
 {
 	char *pos = fent->fts_name;
-	struct entry *current;
+	struct entry *current = pool_alloc(pool, sizeof(struct entry));
 
-	if ((current = calloc(1, sizeof(*current))) == NULL) {
-		fprintf(stderr, "[ERROR] %s: %s\n", __func__, strerror(errno));
-		exit(1);
-	}
-	if ((current->fn = strdup(fent->fts_path)) == NULL) {
-		free(current);
-		fprintf(stderr, "[ERROR] %s: %s\n", __func__, strerror(errno));
-		exit(1);
-	}
-	if (file_read(current)) {
-		free(current->fn);
-		free(current);
-		exit(1);
+	/* Make sure cleared out */
+	memset(current, 0, sizeof(struct entry));
+
+	current->fn = pool_strdup(pool, fent->fts_path);
+
+	if (file_read(pool, current) == -1) {
+		return (NULL);
 	}
 	/* if article in main directory don't use the parent */
 	if (strcmp(fent->fts_parent->fts_name, "data") != 0) {
-		if ((current->parent = strdup(fent->fts_parent->fts_name)) == NULL) {
-			free(current->fn);
-			free(current->title);
-			free(current);
-			exit(1);
-		}
+		current->parent = pool_strdup(pool, fent->fts_parent->fts_name);
 	} else {
 		current->parent = NULL;
 	}
@@ -278,14 +250,9 @@ file_get_attr(FTSENT *fent)
 		pos++;
 	}
 	*pos = 0;
-	if ((current->name = strdup(fent->fts_name)) == NULL) {
-		free(current->fn);
-		free(current->title);
-		free(current->parent);
-		free(current);
-		exit(1);
-	}
+	current->name = pool_strdup(pool, fent->fts_name);
 	current->pubdate = fent->fts_statp->st_mtime;
+
 	return(current);
 }
 
@@ -382,8 +349,8 @@ render_rss_item(const char *m, const struct entry *e)
 		char s[8192];
 
 		if ((f = fopen(e->fn, "re")) == NULL) {
-			d_printf("render_rss_item: fopen %s: %s\n",
-				e->fn, strerror(errno));
+			d_printf("%s: fopen %s: %s\n",
+				__func__, e->fn, strerror(errno));
 			return;
 		}
 
@@ -393,7 +360,7 @@ render_rss_item(const char *m, const struct entry *e)
 		}
 		fclose(f);
 	} else {
-		d_printf("render_rss_item: unknown macro '%s'\n", m);
+		d_printf("%s: unknown macro '%s'\n", __func__, m);
 	}
 }
 
@@ -410,7 +377,7 @@ render_rss(const char *m, const struct entry *e)
 			render_html(fn, &render_rss_item, current);
 		}
 	} else {
-		d_printf("render_rss: unknown macro '%s'\n", m);
+		d_printf("%s: unknown macro '%s'\n", __func__, m);
 	}
 }
 
@@ -437,8 +404,8 @@ render_front_story(const char *m, const struct entry *e)
 		char s[8192];
 
 		if ((f = fopen(e->fn, "re")) == NULL) {
-			d_printf("render_front_story: fopen: %s: %s<br>\n",
-			    e->fn, strerror(errno));
+			d_printf("%s: fopen: %s: %s<br>\n",
+			    __func__, e->fn, strerror(errno));
 			return;
 		}
 		fgets(s, sizeof(s), f);		/* skip first line */
@@ -447,7 +414,7 @@ render_front_story(const char *m, const struct entry *e)
 		}
 		fclose(f);
 	} else {
-		d_printf("render_front_story: unknown macro '%s'<br>\n", m);
+		d_printf("%s: unknown macro '%s'<br>\n", __func__, m);
 	}
 }
 
@@ -472,7 +439,7 @@ render_front(const char *m, const struct entry *e)
 		    cqg(&config, "htmldir"));
 		render_html(fn, NULL, NULL);
 	} else {
-		d_printf("render_front: unknown macro '%s'<br>\n", m);
+		d_printf("%s: unknown macro '%s'<br>\n", __func__, m);
 	}
 }
 
@@ -483,7 +450,7 @@ compare_name_des_fts(const FTSENT * const *a, const FTSENT * const *b)
 }
 
 static void
-find_articles(const char *path, int size)
+find_articles(struct pool *pool, const char *path, int size)
 {
 	FTS *fts;
 	FTSENT *e;
@@ -548,7 +515,7 @@ find_articles(const char *path, int size)
 		    && vf_parent(parent, e->fts_level, e->fts_parent->fts_name)
 		    && vf_article(article, e->fts_path, e->fts_name)
 		    && (file_is_txt(e->fts_name) == 0 )) {
-			if ((entry = file_get_attr(e)) == NULL) {
+			if ((entry = file_get_attr(pool, e)) == NULL) {
 				continue;
 			} else {
 				feed_add(entry);
@@ -562,6 +529,8 @@ find_articles(const char *path, int size)
 int
 main(int argc, const char **argv)
 {
+	struct pool *pool = pool_create(64);
+
 	const char *s;
 	char valgrindstr[256], conffile[256];
 	static struct timeval tx;
@@ -570,7 +539,7 @@ main(int argc, const char **argv)
 
 	gettimeofday(&tx, NULL);
 	if (chdir("/tmp")) {
-		fprintf(stderr, "error main: chdir: /tmp: %s", strerror(errno));
+		fprintf(stderr, "%s: chdir: /tmp: %s", __func__, strerror(errno));
 		return (0);
 	}
 	umask(007);
@@ -674,7 +643,7 @@ main(int argc, const char **argv)
 	char fn[1024];
 	struct entry e;
 	strlcpy(fn, cqg(&config, "datadir"), sizeof(fn));
-	find_articles(fn, 10);
+	find_articles(pool, fn, 10);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
 		snprintf(fn, sizeof(fn), "%s/summary.rss",
@@ -699,8 +668,8 @@ done:
 		fflush(stdout);
 	}
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
+	pool_free(pool);
 purge:
-	feed_purge();
 	cez_queue_purge(&config);
 	return (0);
 }
