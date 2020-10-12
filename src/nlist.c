@@ -90,58 +90,6 @@ msg(const char *fmt, ...)
 	fclose(f);
 }
 
-static char *
-html_esc(const char *s, char *d, size_t len, int allownl)
-{
-	size_t p;
-
-	for (p = 0; *s && p < len - 1; ++s) {
-		switch (*s) {
-		case '&':
-			if (p < len - 5) {
-				strlcpy(d + p, "&amp;", 6);
-				p += 5;
-			}
-			break;
-		case '\"':
-			if (p < len - 6) {
-				strlcpy(d + p, "&quot;", 7);
-				p += 6;
-			}
-			break;
-		case '<':
-			if (p < len - 4) {
-				strlcpy(d + p, "&lt;", 5);
-				p += 4;
-			}
-			break;
-		case '>':
-			if (p < len - 4) {
-				strlcpy(d + p, "&gt;", 5);
-				p += 4;
-			}
-			break;
-		case '\r':
-		case '\n':
-			if (!allownl) {
-				/* skip */
-				break;
-			} else if (allownl > 1 && *s == '\r') {
-				if (p < len - 4) {
-					strlcpy(d + p, "<br>", 5);
-					p += 4;
-				}
-				break;
-			}
-			/* else fall through */
-		default:
-			d[p++] = *s;
-		}
-	}
-	d[p] = 0;
-	return (d);
-}
-
 static void
 feed_add(struct entry *entry)
 {
@@ -336,10 +284,8 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 static void
 render_rss_item(const char *m, const struct entry *e)
 {
-	char d[256];
-
 	if (strcmp(m, "TITLE") == 0) {
-		d_printf("%s", html_esc(e->title, d, sizeof(d), 0));
+		d_printf("%s", e->title);
 	} else if (strcmp(m, "LINK") == 0) {
 		d_printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
 	} else if (strcmp(m, "DATE") == 0) {
