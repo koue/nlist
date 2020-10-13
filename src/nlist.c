@@ -411,8 +411,6 @@ find_articles(struct pool *pool, const char *path, int size)
 		return;
 	}
 
-/* parsing query string */
-//	if(q->query_string != NULL) {
 	if((tmp = getenv("QUERY_STRING")) != NULL) {
 		snprintf(query, sizeof(query), "%s", tmp);
 		pos = query;
@@ -460,6 +458,81 @@ find_articles(struct pool *pool, const char *path, int size)
 	fts_close(fts);
 }
 
+void
+http_accept_encoding(void)
+{
+	const char *s;
+
+	if ((s = getenv("HTTP_ACCEPT_ENCODING")) != NULL) {
+		char *p = strstr(s, "gzip");
+		if (p != NULL && ((strncmp(p, "gzip;q=0", 8) != 0) ||
+		    strtol(p + 7, (char **)NULL, 10) > 0.0)) {
+			gz = gzdopen(fileno(stdout), "wb9");
+			if (gz == NULL) {
+				msg("error main: gzdopen");
+			} else {
+				printf("Content-Encoding: gzip\r\n");
+			}
+		}
+	}
+}
+
+static int
+http_query_check(const char *s)
+{
+	if (strlen(s) > 64) {
+		printf("Status: 400\r\n\r\n You are trying to send very "
+		    "long query!\n");
+		fflush(stdout);
+		return (-1);
+	}
+
+	if (strstr(s, "&amp;") != NULL) {
+		msg("warning main: escaped query '%s'", s);
+		printf("Status: 400\r\n\r\nHTML escaped ampersand in cgi "
+		    "query string \"%s\"\n", s);
+		fflush(stdout);
+		return (-1);
+	}
+
+	/*
+	Sanity check of the query string, accepts only alpha,
+	'/' and '_' and '.' if its on 5 position before the end of the string
+
+	Correct: /follow/this/path/
+		/or/this/
+		/and/this/if/its/single/article.html
+	*/
+	for (int i = 0; i < strlen(s); i++) {
+		if ((!isalpha(s[i])) && (!isdigit(s[i]))
+		    && (s[i] != '/') && (s[i] != '_')) {
+			if ((i == (strlen(s)-5)) && (s[i] == '.')) {
+				continue;
+			}
+			printf("Status: 400\r\n\r\nYou are trying "
+			    "to send wrong query!\n");
+			fflush(stdout);
+			return (-1);
+		}
+	}
+
+	return (0);
+}
+
+static void
+http_gz_close(void)
+{
+	if (gz != NULL) {
+		if (gzclose(gz) != Z_OK) {
+			msg("error main: gzclose");
+		}
+		gz = NULL;
+	} else {
+		fflush(stdout);
+	}
+}
+
+
 int
 main(int argc, const char **argv)
 {
@@ -468,12 +541,12 @@ main(int argc, const char **argv)
 	const char *s;
 	char valgrindstr[256], conffile[256];
 	static struct timeval tx;
-	time_t if_modified_since = 0;
 	int i, query = 0, valgrind = 0;
 
 	gettimeofday(&tx, NULL);
 	if (chdir("/tmp")) {
 		fprintf(stderr, "%s: chdir: /tmp: %s", __func__, strerror(errno));
+		pool_free(pool);
 		return (0);
 	}
 	umask(007);
@@ -506,69 +579,17 @@ main(int argc, const char **argv)
 			if (cqu(&config, params[i], valgrindstr) == -1) {
 				fprintf(stderr, "Cannot adjust %s\n. Exit.",
 					    valgrindme[i]);
+				pool_free(pool);
 				exit (1);
 			}
 		}
 	}
 
-	if ((s = getenv("HTTP_ACCEPT_ENCODING")) != NULL) {
-		char *p = strstr(s, "gzip");
-		if (p != NULL && ((strncmp(p, "gzip;q=0", 8) != 0) ||
-		    strtol(p + 7, (char **)NULL, 10) > 0.0)) {
-			gz = gzdopen(fileno(stdout), "wb9");
-			if (gz == NULL) {
-				msg("error main: gzdopen");
-			} else {
-				printf("Content-Encoding: gzip\r\n");
-			}
-		}
-	}
-
+	http_accept_encoding();
 	if ((s = getenv("QUERY_STRING")) != NULL) {
 		query = 1;
-		if (strlen(s) > 64) {
-			printf("Status: 400\r\n\r\n You are trying to send very "
-			    "long query!\n");
-			fflush(stdout);
+		if (http_query_check(s) == -1) {
 			goto done;
-
-		} else if (strstr(s, "&amp;") != NULL) {
-			msg("warning main: escaped query '%s'", s);
-			printf("Status: 400\r\n\r\nHTML escaped ampersand in cgi "
-			    "query string \"%s\"\n", s);
-			fflush(stdout);
-			goto done;
-		} else {
-			for (i = 0; i < strlen(s); i++) {
-				/*
-				sanity check of the query string, accepts
-				only alpha, '/' and '_' and '.' if its on 5
-				position before the end of the string
-
-					Correct: /follow/this/path/
-						 /or/this/
-						 /and/this/if/its/single/article.html
-				*/
-                        	if ((!isalpha(s[i])) && (!isdigit(s[i])) && (s[i] != '/') && (s[i] != '_')) {
-					if ((i == (strlen(s)-5)) && (s[i] == '.')) {
-						continue;
-					}
-					printf("Status: 400\r\n\r\nYou are trying "
-					    "to send wrong query!\n");
-	                                fflush(stdout);
-					goto done;
-                	        }
-                	}
-		}
-	}
-
-	if ((s = getenv("IF_MODIFIED_SINCE")) != NULL) {
-		if_modified_since = convert_rfc822_time(s);
-		if (if_modified_since <= 0) {
-			if_modified_since = (time_t)strtoul(s, NULL, 10);
-		}
-		if (!if_modified_since) {
-			msg("warning main: invalid IF_MODIFIED_SINCE '%s'", s);
 		}
 	}
 
@@ -593,14 +614,7 @@ main(int argc, const char **argv)
 	fflush(stdout);
 
 done:
-	if (gz != NULL) {
-		if (gzclose(gz) != Z_OK) {
-			msg("error main: gzclose");
-		}
-		gz = NULL;
-	} else {
-		fflush(stdout);
-	}
+	http_gz_close();
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
 	pool_free(pool);
 purge:
