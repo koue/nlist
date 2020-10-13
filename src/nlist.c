@@ -97,18 +97,6 @@ feed_add(struct entry *entry)
 }
 
 static int
-skip_prefix(const char *str, const char *prefix, const char **out)
-{
-	do {
-		if (!*prefix) {
-			*out = str;
-			return (1);
-		}
-	} while (*str++ == *prefix++);
-	return (0);
-}
-
-static int
 vf_parent(const char *p, int l, const char *f)
 {
 	return(((strlen(p) == 0) && (l == 1)) || (strcmp(p, f)) == 0);
