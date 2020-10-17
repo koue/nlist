@@ -580,17 +580,16 @@ main(int argc, const char **argv)
 
 	char *fn;
 	struct entry e;
+	memset(&e, 0, sizeof(e));
 	fn = pool_printf(pool, "%s", cqg(&config, "datadir"));
 	find_articles(pool, fn, 10);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
 		fn = pool_printf(pool, "%s/summary.rss", cqg(&config, "htmldir"));
-		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_rss, &e);
 	} else {
 		printf("%s\r\n\r\n", cqg(&config, "ct_html"));
 		fn = pool_printf(pool, "%s/main.html", cqg(&config, "htmldir"));
-		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_front, &e);
 	}
 	fflush(stdout);
