@@ -260,6 +260,24 @@ render_html(const char *html_fn, render_cb r, const struct entry *e)
 }
 
 static void
+render_item_body(const char *m)
+{
+	FILE *f;
+	char s[8192];
+
+	if ((f = fopen(m, "re")) == NULL) {
+		d_printf("%s: fopen %s: %s\n", __func__, m, strerror(errno));
+		return;
+	}
+	/* skip first line */
+	fgets(s, sizeof(s), f);
+	while (fgets(s, sizeof(s), f)) {
+		d_printf("%s", s);
+	}
+	fclose(f);
+}
+
+static void
 render_rss_item(const char *m, const struct entry *e)
 {
 	if (strcmp(m, "TITLE") == 0) {
@@ -269,20 +287,7 @@ render_rss_item(const char *m, const struct entry *e)
 	} else if (strcmp(m, "DATE") == 0) {
 		d_printf("%s", ctime(&e->pubdate));
 	} else if (strcmp(m, "BODY") == 0) {
-		FILE *f;
-		char s[8192];
-
-		if ((f = fopen(e->fn, "re")) == NULL) {
-			d_printf("%s: fopen %s: %s\n",
-				__func__, e->fn, strerror(errno));
-			return;
-		}
-
-		fgets(s, sizeof(s), f);		/* skip first line */
-		while (fgets(s, sizeof(s), f)) {
-			d_printf("%s", s);
-		}
-		fclose(f);
+		render_item_body(e->fn);
 	} else {
 		d_printf("%s: unknown macro '%s'\n", __func__, m);
 	}
@@ -324,19 +329,7 @@ render_front_story(const char *m, const struct entry *e)
 		}
 		d_printf("%s", e->name);
 	} else if (strcmp(m, "BODY") == 0) {
-		FILE *f;
-		char s[8192];
-
-		if ((f = fopen(e->fn, "re")) == NULL) {
-			d_printf("%s: fopen: %s: %s<br>\n",
-			    __func__, e->fn, strerror(errno));
-			return;
-		}
-		fgets(s, sizeof(s), f);		/* skip first line */
-		while (fgets(s, sizeof(s), f)) {
-			d_printf("%s", s);
-		}
-		fclose(f);
+		render_item_body(e->fn);
 	} else {
 		d_printf("%s: unknown macro '%s'<br>\n", __func__, m);
 	}
@@ -585,19 +578,18 @@ main(int argc, const char **argv)
 
 	TAILQ_INIT(&feed.head);
 
-	char fn[1024];
+	char *fn;
 	struct entry e;
-	strlcpy(fn, cqg(&config, "datadir"), sizeof(fn));
+	fn = pool_printf(pool, "%s", cqg(&config, "datadir"));
 	find_articles(pool, fn, 10);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
-		snprintf(fn, sizeof(fn), "%s/summary.rss",
-		    cqg(&config, "htmldir"));
+		fn = pool_printf(pool, "%s/summary.rss", cqg(&config, "htmldir"));
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_rss, &e);
 	} else {
 		printf("%s\r\n\r\n", cqg(&config, "ct_html"));
-		snprintf(fn, sizeof(fn), "%s/main.html", cqg(&config, "htmldir"));
+		fn = pool_printf(pool, "%s/main.html", cqg(&config, "htmldir"));
 		memset(&e, 0, sizeof(e));
 		render_html(fn, &render_front, &e);
 	}
