@@ -529,7 +529,7 @@ main(int argc, const char **argv)
 	struct pool *pool = pool_create(64);
 
 	const char *s;
-	char valgrindstr[256], conffile[256];
+	char *valgrindstr, *conffile;
 	static struct timeval tx;
 	int i, query = 0, valgrind = 0;
 
@@ -549,9 +549,9 @@ main(int argc, const char **argv)
 
 	cez_queue_init(&config);
 	if (valgrind) {
-		snprintf(conffile, sizeof(conffile), "%s/%s", CHROOT, CONFFILE);
+		conffile = pool_printf(pool, "%s/%s", CHROOT, CONFFILE);
 	} else {
-		snprintf(conffile, sizeof(conffile), "%s", CONFFILE);
+		conffile = pool_printf(pool, "%s", CONFFILE);
 	}
 	if (configfile_parse(conffile, &config) == -1) {
 		fprintf(stderr, "error load_conf: file '%s'\n", conffile );
@@ -564,7 +564,7 @@ main(int argc, const char **argv)
 
 	if (valgrind) {
 		for (i = 0; valgrindme[i] != NULL; ++i) {
-			snprintf(valgrindstr, sizeof(valgrindstr), "%s/%s",
+			valgrindstr = pool_printf(pool, "%s/%s",
 				    CHROOT, cqg(&config, valgrindme[i]));
 			if (cqu(&config, params[i], valgrindstr) == -1) {
 				fprintf(stderr, "Cannot adjust %s\n. Exit.",
@@ -606,8 +606,8 @@ main(int argc, const char **argv)
 done:
 	http_gz_close();
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
-	pool_free(pool);
 purge:
+	pool_free(pool);
 	cez_queue_purge(&config);
 	return (0);
 }
