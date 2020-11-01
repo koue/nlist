@@ -42,7 +42,38 @@
 
 #include "nlist.h"
 
-typedef	void (*render_cb)(const char *, const struct entry *);
+typedef void (*render_cb)(const char *, const struct entry *);
+
+static void render_main(const char *html_fn, render_cb r, const struct entry *e);
+static void render_macro(const char *m, const struct entry *e);
+static void render_main_simple(const char *m, const struct entry *e);
+static void render_story_list(const char *m, const struct entry *e);
+static void render_link(const char *m, const struct entry *e);
+static void render_body(const char *m, const struct entry *e);
+static void render_date(const char *m, const struct entry *e);
+static void render_baseurl(const char *m, const struct entry *e);
+static void render_ctype(const char *m, const struct entry *e);
+static void render_title(const char *m, const struct entry *e);
+static void render_article(const char *m, const struct entry *e);
+
+static const struct {
+	const char *name;
+	const char *file;
+	render_cb render;
+} Macro[] = {
+	{ "HEADER",		"header.html",	&render_main_simple },
+	{ "FOOTER",		"footer.html",	&render_main_simple },
+	{ "STORIES_HTML",	"story.html",	&render_story_list },
+	{ "STORIES_RSS",	"story.rss",	&render_story_list },
+	{ "ARTICLE",		NULL,		&render_article },
+	{ "BASEURL",		NULL,		&render_baseurl },
+	{ "BODY",		NULL,		&render_body },
+	{ "CTYPE",		NULL,		&render_ctype },
+	{ "DATE",		NULL,		&render_date },
+	{ "LINK",		NULL,		&render_link },
+	{ "TITLE",		NULL,		&render_title },
+	{ NULL,			NULL,		NULL },
+};
 
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
@@ -221,143 +252,6 @@ render_error(const char *fmt, ...)
 	d_printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
 	d_printf("Time: <b>%s</b><br>\n", rfc822_time(time(0)));
 	d_printf("</body></html>\n");
-}
-
-static int
-render_html(const char *html_fn, render_cb r, const struct entry *e)
-{
-	FILE *f;
-	char s[8192];
-
-	if ((f = fopen(html_fn, "re")) == NULL) {
-		d_printf("ERROR: fopen: %s: %s<br>\n", html_fn,
-		    strerror(errno));
-		return (1);
-	}
-	while (fgets(s, sizeof(s), f)) {
-		char *a, *b;
-
-		for (a = s; (b = strstr(a, "%%")) != NULL;) {
-			*b = 0;
-			d_printf("%s", a);
-			a = b + 2;
-			if ((b = strstr(a, "%%")) != NULL) {
-				*b = 0;
-				if (strcmp(a, "BASEURL") == 0) {
-					d_printf("%s", cqg(&config, "baseurl"));
-				} else if (strcmp(a, "CTYPE") == 0) {
-					d_printf("%s", cqg(&config, "ct_html"));
-				} else if (r != NULL) {
-					(*r)(a, e);
-				}
-				a = b + 2;
-			}
-		}
-		d_printf("%s", a);
-	}
-	fclose(f);
-	return (0);
-}
-
-static void
-render_item_body(const char *m)
-{
-	FILE *f;
-	char s[8192];
-
-	if ((f = fopen(m, "re")) == NULL) {
-		d_printf("%s: fopen %s: %s\n", __func__, m, strerror(errno));
-		return;
-	}
-	/* skip first line */
-	fgets(s, sizeof(s), f);
-	while (fgets(s, sizeof(s), f)) {
-		d_printf("%s", s);
-	}
-	fclose(f);
-}
-
-static void
-render_rss_item(const char *m, const struct entry *e)
-{
-	if (strcmp(m, "TITLE") == 0) {
-		d_printf("%s", e->title);
-	} else if (strcmp(m, "LINK") == 0) {
-		d_printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
-	} else if (strcmp(m, "DATE") == 0) {
-		d_printf("%s", ctime(&e->pubdate));
-	} else if (strcmp(m, "BODY") == 0) {
-		render_item_body(e->fn);
-	} else {
-		d_printf("%s: unknown macro '%s'\n", __func__, m);
-	}
-}
-
-static void
-render_rss(const char *m, const struct entry *e)
-{
-	struct entry *current;
-
-	if (strcmp(m, "ITEMS") == 0) {
-		char fn[1024];
-		snprintf(fn, sizeof(fn), "%s/summary_item.rss",
-		    cqg(&config, "htmldir"));
-		TAILQ_FOREACH(current, &feed.head, item) {
-			render_html(fn, &render_rss_item, current);
-		}
-	} else {
-		d_printf("%s: unknown macro '%s'\n", __func__, m);
-	}
-}
-
-static void
-render_front_story(const char *m, const struct entry *e)
-{
-	if (strcmp(m, "NAME") == 0) {
-		if (e->title[0]) {
-			d_printf("%s", e->title);
-		} else {
-			d_printf("%s", "NONAMEZ");
-		}
-	} else if (strcmp(m, "DATE") == 0) {
-		d_printf("%s", ctime(&e->pubdate));
-	} else if (strcmp(m, "BASEURL") == 0) {
-		d_printf("%s", cqg(&config, "baseurl"));
-	} else if (strcmp(m, "ARTICLE") == 0) {
-		if (e->parent) {
-			d_printf("%s/", e->parent);
-		}
-		d_printf("%s", e->name);
-	} else if (strcmp(m, "BODY") == 0) {
-		render_item_body(e->fn);
-	} else {
-		d_printf("%s: unknown macro '%s'<br>\n", __func__, m);
-	}
-}
-
-static void
-render_front(const char *m, const struct entry *e)
-{
-	char fn[1024];
-	struct entry *current;
-
-	if (strcmp(m, "STORY") == 0) {
-		snprintf(fn, sizeof(fn), "%s/story.html",
-		    cqg(&config, "htmldir"));
-		TAILQ_FOREACH(current, &feed.head, item) {
-			render_html(fn, &render_front_story, current);
-		}
-	} else if (strcmp(m, "HEADER") == 0) {
-		snprintf(fn, sizeof(fn), "%s/header.html",
-		    cqg(&config, "htmldir"));
-		render_html(fn, NULL, NULL);
-	} else if (strcmp(m, "FOOTER") == 0) {
-		snprintf(fn, sizeof(fn), "%s/footer.html",
-		    cqg(&config, "htmldir"));
-		render_html(fn, NULL, NULL);
-	} else {
-		d_printf("%s: unknown macro '%s'<br>\n", __func__, m);
-	}
 }
 
 static int
@@ -586,12 +480,11 @@ main(int argc, const char **argv)
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
 		fn = pool_printf(pool, "%s/summary.rss", cqg(&config, "htmldir"));
-		render_html(fn, &render_rss, &e);
 	} else {
 		printf("%s\r\n\r\n", cqg(&config, "ct_html"));
 		fn = pool_printf(pool, "%s/main.html", cqg(&config, "htmldir"));
-		render_html(fn, &render_front, &e);
 	}
+	render_main(fn, &render_macro, &e);
 	fflush(stdout);
 
 done:
@@ -601,4 +494,135 @@ purge:
 	pool_free(pool);
 	cez_queue_purge(&config);
 	return (0);
+}
+
+/*
+ * Render functions
+ *
+ */
+
+static void
+render_main(const char *html_fn, render_cb r, const struct entry *e)
+{
+	FILE *f;
+	char s[8192];
+
+	if ((f = fopen(html_fn, "re")) == NULL) {
+		d_printf("ERROR: fopen: %s: %s<br>\n", html_fn,
+		    strerror(errno));
+		return;
+	}
+	while (fgets(s, sizeof(s), f)) {
+		char *a, *b;
+
+		for (a = s; (b = strstr(a, "%%")) != NULL;) {
+			*b = 0;
+			d_printf("%s", a);
+			a = b + 2;
+			if ((b = strstr(a, "%%")) != NULL) {
+				*b = 0;
+				if (r != NULL) {
+					(*r)(a, e);
+				}
+				a = b + 2;
+			}
+		}
+		d_printf("%s", a);
+	}
+	fclose(f);
+}
+
+static void
+render_macro(const char *m, const struct entry *e)
+{
+	int i;
+	char fn[1024];
+
+	for (i = 0; Macro[i].name; i++) {
+		if (strcmp(Macro[i].name, m) == 0) {
+			if (Macro[i].file != NULL) {
+				snprintf(fn, sizeof(fn), "%s/%s",
+					cqg(&config, "htmldir"), Macro[i].file);
+				(*Macro[i].render)(fn, e);
+			} else {
+				(*Macro[i].render)(NULL, e);
+			}
+			break;
+		}
+	}
+	if (Macro[i].name == NULL)
+		d_printf("%s: unknown macro '%s'<br>\n", __func__, m);
+}
+
+static void
+render_story_list(const char *m, const struct entry *e)
+{
+	struct entry *current;
+
+	TAILQ_FOREACH(current, &feed.head, item) {
+		render_main(m, &render_macro, current);
+	}
+}
+
+static void
+render_body(const char *m, const struct entry *e)
+{
+	FILE *f;
+	char s[8192];
+
+	if ((f = fopen(e->fn, "re")) == NULL) {
+		d_printf("%s: fopen %s: %s\n", __func__, e->fn, strerror(errno));
+		return;
+	}
+	/* skip first line */
+	fgets(s, sizeof(s), f);
+	while (fgets(s, sizeof(s), f)) {
+		d_printf("%s", s);
+	}
+	fclose(f);
+}
+
+static void
+render_main_simple(const char *m, const struct entry *e)
+{
+	render_main(m, &render_macro, NULL);
+}
+
+static void
+render_baseurl(const char *m, const struct entry *e)
+{
+	d_printf("%s", cqg(&config, "baseurl"));
+}
+
+static void
+render_date(const char *m, const struct entry *e)
+{
+	d_printf("%s", ctime(&e->pubdate));
+}
+
+static void
+render_title(const char *m, const struct entry *e)
+{
+	d_printf("%s", e->title);
+}
+
+static void
+render_ctype(const char *m, const struct entry *e)
+{
+	d_printf("%s", cqg(&config, "ct_html"));
+}
+
+static void
+render_article(const char *m, const struct entry *e)
+{
+	if (e->parent) {
+		d_printf("%s/", e->parent);
+	}
+	d_printf("%s", e->name);
+}
+
+static void
+render_link(const char *m, const struct entry *e)
+{
+	d_printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
 }

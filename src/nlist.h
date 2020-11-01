@@ -33,7 +33,7 @@
 
 #include <sys/queue.h>
 
-#define	VERSION		2010
+#define	VERSION		2020
 
 #define	DOMAIN		"koue.chaosophia.net"
 #define	CONFFILE	"/etc/nlist.conf"
