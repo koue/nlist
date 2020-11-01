@@ -34,7 +34,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <zlib.h>
 
 #include <cez_core_pool.h>
 #include <cez_queue.h>
@@ -82,8 +81,6 @@ static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefil
 
 static struct cez_queue config;
 static struct feed feed;
-
-static gzFile	gz = NULL;
 
 static void
 msg(const char *fmt, ...)
@@ -214,30 +211,6 @@ file_get_attr(struct pool *pool, FTSENT *fent)
 }
 
 static void
-d_printf(const char *fmt, ...)
-{
-	static char s[65536];
-	va_list ap;
-	int r;
-
-	va_start(ap, fmt);
-	r = vsnprintf(s, sizeof(s), fmt, ap);
-	va_end(ap);
-	if (r < 0 || r >= sizeof(s)) {
-		msg("error d_printf: vsnprintf: r %d (%d)", r, (int)sizeof(s));
-	}
-	if (gz != NULL) {
-		r = gzputs(gz, s);
-		if (r != strlen(s)) {
-			msg("error d_printf: gzputs: r %d (%d)",
-			    r, (int)strlen(s));
-		}
-	} else {
-		fprintf(stdout, "%s", s);
-	}
-}
-
-static void
 render_error(const char *fmt, ...)
 {
 	va_list ap;
@@ -248,10 +221,10 @@ render_error(const char *fmt, ...)
 	va_end(ap);
 	printf("%s\r\n\r\n", cqg(&config, "ct_html"));
 	fflush(stdout);
-	d_printf("<html><head><title>Error</title></head><body>\n");
-	d_printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
-	d_printf("Time: <b>%s</b><br>\n", rfc822_time(time(0)));
-	d_printf("</body></html>\n");
+	printf("<html><head><title>Error</title></head><body>\n");
+	printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
+	printf("Time: <b>%s</b><br>\n", rfc822_time(time(0)));
+	printf("</body></html>\n");
 }
 
 static int
@@ -274,15 +247,15 @@ find_articles(struct pool *pool, const char *path, int size)
 
 	if ((fts = fts_open(path_argv, FTS_LOGICAL, compare_name_des_fts))
 	    == NULL) {
-		d_printf("fts_open: %s: %s<br>\n", path, strerror(errno));
+		printf("fts_open: %s: %s<br>\n", path, strerror(errno));
 		return;
 	} else if ((e = fts_read(fts)) == NULL || (e->fts_info != FTS_D)) {
-		d_printf("fts_read: fts_info %s: %s<br>\n", path,
+		printf("fts_read: fts_info %s: %s<br>\n", path,
 							strerror(errno));
 		return;
 	} else if ((e = fts_children(fts, FTS_NAMEONLY)) == NULL) {
 		if (errno != 0) {
-			d_printf("fts_children: %s: %s<br>\n", path,
+			printf("fts_children: %s: %s<br>\n", path,
 							strerror(errno));
 		}
 		return;
@@ -335,25 +308,6 @@ find_articles(struct pool *pool, const char *path, int size)
 	fts_close(fts);
 }
 
-void
-http_accept_encoding(void)
-{
-	const char *s;
-
-	if ((s = getenv("HTTP_ACCEPT_ENCODING")) != NULL) {
-		char *p = strstr(s, "gzip");
-		if (p != NULL && ((strncmp(p, "gzip;q=0", 8) != 0) ||
-		    strtol(p + 7, (char **)NULL, 10) > 0.0)) {
-			gz = gzdopen(fileno(stdout), "wb9");
-			if (gz == NULL) {
-				msg("error main: gzdopen");
-			} else {
-				printf("Content-Encoding: gzip\r\n");
-			}
-		}
-	}
-}
-
 static int
 http_query_check(const char *s)
 {
@@ -395,20 +349,6 @@ http_query_check(const char *s)
 
 	return (0);
 }
-
-static void
-http_gz_close(void)
-{
-	if (gz != NULL) {
-		if (gzclose(gz) != Z_OK) {
-			msg("error main: gzclose");
-		}
-		gz = NULL;
-	} else {
-		fflush(stdout);
-	}
-}
-
 
 int
 main(int argc, const char **argv)
@@ -462,7 +402,6 @@ main(int argc, const char **argv)
 		}
 	}
 
-	http_accept_encoding();
 	if ((s = getenv("QUERY_STRING")) != NULL) {
 		query = 1;
 		if (http_query_check(s) == -1) {
@@ -488,7 +427,7 @@ main(int argc, const char **argv)
 	fflush(stdout);
 
 done:
-	http_gz_close();
+	fflush(stdout);
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
 purge:
 	pool_free(pool);
@@ -508,7 +447,7 @@ render_main(const char *html_fn, render_cb r, const struct entry *e)
 	char s[8192];
 
 	if ((f = fopen(html_fn, "re")) == NULL) {
-		d_printf("ERROR: fopen: %s: %s<br>\n", html_fn,
+		printf("ERROR: fopen: %s: %s<br>\n", html_fn,
 		    strerror(errno));
 		return;
 	}
@@ -517,7 +456,7 @@ render_main(const char *html_fn, render_cb r, const struct entry *e)
 
 		for (a = s; (b = strstr(a, "%%")) != NULL;) {
 			*b = 0;
-			d_printf("%s", a);
+			printf("%s", a);
 			a = b + 2;
 			if ((b = strstr(a, "%%")) != NULL) {
 				*b = 0;
@@ -527,7 +466,7 @@ render_main(const char *html_fn, render_cb r, const struct entry *e)
 				a = b + 2;
 			}
 		}
-		d_printf("%s", a);
+		printf("%s", a);
 	}
 	fclose(f);
 }
@@ -551,7 +490,7 @@ render_macro(const char *m, const struct entry *e)
 		}
 	}
 	if (Macro[i].name == NULL)
-		d_printf("%s: unknown macro '%s'<br>\n", __func__, m);
+		printf("%s: unknown macro '%s'<br>\n", __func__, m);
 }
 
 static void
@@ -571,13 +510,13 @@ render_body(const char *m, const struct entry *e)
 	char s[8192];
 
 	if ((f = fopen(e->fn, "re")) == NULL) {
-		d_printf("%s: fopen %s: %s\n", __func__, e->fn, strerror(errno));
+		printf("%s: fopen %s: %s\n", __func__, e->fn, strerror(errno));
 		return;
 	}
 	/* skip first line */
 	fgets(s, sizeof(s), f);
 	while (fgets(s, sizeof(s), f)) {
-		d_printf("%s", s);
+		printf("%s", s);
 	}
 	fclose(f);
 }
@@ -591,38 +530,38 @@ render_main_simple(const char *m, const struct entry *e)
 static void
 render_baseurl(const char *m, const struct entry *e)
 {
-	d_printf("%s", cqg(&config, "baseurl"));
+	printf("%s", cqg(&config, "baseurl"));
 }
 
 static void
 render_date(const char *m, const struct entry *e)
 {
-	d_printf("%s", ctime(&e->pubdate));
+	printf("%s", ctime(&e->pubdate));
 }
 
 static void
 render_title(const char *m, const struct entry *e)
 {
-	d_printf("%s", e->title);
+	printf("%s", e->title);
 }
 
 static void
 render_ctype(const char *m, const struct entry *e)
 {
-	d_printf("%s", cqg(&config, "ct_html"));
+	printf("%s", cqg(&config, "ct_html"));
 }
 
 static void
 render_article(const char *m, const struct entry *e)
 {
 	if (e->parent) {
-		d_printf("%s/", e->parent);
+		printf("%s/", e->parent);
 	}
-	d_printf("%s", e->name);
+	printf("%s", e->name);
 }
 
 static void
 render_link(const char *m, const struct entry *e)
 {
-	d_printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
+	printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
 }
