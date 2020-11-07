@@ -4,7 +4,7 @@ PROG=		nlist
 CFLAGS+=	-Werror \
 		-I/usr/local/include
 LDFLAGS+=	-L/usr/local/lib
-LDADD=		-lcezqueue -lcezmisc -lcezcorepool
+LDADD=		-lcezqueue -lcezmisc -lcezcorepool -lcezrender
 
 MAN=
 

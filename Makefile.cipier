@@ -9,7 +9,7 @@ COMMENT=	Simple blog written in c inspired by blosxom and undeadly.org
 
 LICENSE=	BSD2CLAUSE
 
-CEZ_VERSION=	1.12
+CEZ_VERSION=	1.13
 USE_GITHUB=	yes
 GH_ACCOUNT=	koue
 GH_PROJECT=	nlist:nlist \
@@ -17,15 +17,18 @@ GH_PROJECT=	nlist:nlist \
 GH_TAGNAME=	${CEZ_VERSION}:libcez
 
 CFLAGS+=	-I${WRKSRC_libcez}/src/core \
+		-I${WRKSRC_libcez}/src/misc \
 		-I${WRKSRC_libcez}/src/queue \
-		-I${WRKSRC_libcez}/src/misc
+		-I${WRKSRC_libcez}/src/render
 LDFLAGS+=	-L${WRKSRC_libcez}/src/core \
+		-L${WRKSRC_libcez}/src/misc \
 		-L${WRKSRC_libcez}/src/queue \
-		-L${WRKSRC_libcez}/src/misc
+		-L${WRKSRC_libcez}/src/render
 
 pre-configure:
 	@(cd ${WRKSRC_libcez}/src/core && ${SETENV} ${MAKE_ENV} ${MAKE})
-	@(cd ${WRKSRC_libcez}/src/queue && ${SETENV} ${MAKE_ENV} ${MAKE})
 	@(cd ${WRKSRC_libcez}/src/misc && ${SETENV} ${MAKE_ENV} ${MAKE})
+	@(cd ${WRKSRC_libcez}/src/queue && ${SETENV} ${MAKE_ENV} ${MAKE})
+	@(cd ${WRKSRC_libcez}/src/render && ${SETENV} ${MAKE_ENV} ${MAKE})
 
 .include <bsd.port.mk>

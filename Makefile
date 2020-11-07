@@ -12,9 +12,11 @@ ETCDIR=		/etc
 TMPDIR=		/tmp
 LIBEXECDIR=	/libexec
 CGI=		index.cgi
-TESTTITLE=	My first title
-TESTLINE=	My first line
-VALGRINDCMD=	valgrind -q --tool=memcheck --leak-check=yes --num-callers=20
+TESTTITLE1=	My first title
+TESTLINE1=	My first line
+TESTTITLE2=	My second title
+TESTLINE2=	My second line
+VALGRINDCMD=	valgrind -q --tool=memcheck --leak-check=yes --show-leak-kinds=all --num-callers=20
 MYUSERCMD=	grep MYUSER $(MYHEADER) | cut -d '"' -f 2
 MYUSER=		${MYUSERCMD:sh}
 MYGROUPCMD=	grep MYGROUP $(MYHEADER) | cut -d '"' -f 2
@@ -53,14 +55,17 @@ update:
 	cp src/nlist $(LOCALBASE)$(WEBDIR)/$(CGI)
 
 first:
-	printf "$(TESTTITLE)\n$(TESTLINE)" > $(LOCALBASE)$(DATADIR)/data/first.txt
+	printf "$(TESTTITLE1)\n$(TESTLINE1)" > $(LOCALBASE)$(DATADIR)/data/first.txt
+	printf "$(TESTTITLE2)\n$(TESTLINE2)" > $(LOCALBASE)$(DATADIR)/data/second.txt
 
 test:	chroot install first
-	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTTITLE)"
-	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTLINE)"
+	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTTITLE1)"
+	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTLINE1)"
+	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTTITLE2)"
+	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTLINE2)"
 
 valgrind: chroot install first
-	$(VALGRINDCMD) ./src/nlist --valgrind | grep "$(TESTTITLE)"
+	$(VALGRINDCMD) ./src/nlist --valgrind | grep "$(TESTTITLE1)"
 
 #testquery:
 #	QUERY_STRING='/action/submit' chroot -u www -g www $(LOCALBASE) $(WEBDIR)/$(CGI)

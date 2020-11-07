@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2020 Nikola Kolev <koue@chaosophia.net>
- * Copyright (c) 2004-2006 Daniel Hartmeier. All rights reserved.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,43 +36,23 @@
 #include <unistd.h>
 
 #include <cez_core_pool.h>
-#include <cez_queue.h>
 #include <cez_misc.h>
+#include <cez_queue.h>
+#include <cez_render.h>
 
 #include "nlist.h"
 
-typedef void (*render_cb)(const char *, const struct entry *);
-
-static void render_main(const char *html_fn, render_cb r, const struct entry *e);
-static void render_macro(const char *m, const struct entry *e);
-static void render_main_simple(const char *m, const struct entry *e);
-static void render_story_list(const char *m, const struct entry *e);
-static void render_link(const char *m, const struct entry *e);
-static void render_body(const char *m, const struct entry *e);
-static void render_date(const char *m, const struct entry *e);
-static void render_baseurl(const char *m, const struct entry *e);
-static void render_ctype(const char *m, const struct entry *e);
-static void render_title(const char *m, const struct entry *e);
-static void render_article(const char *m, const struct entry *e);
-
-static const struct {
-	const char *name;
-	const char *file;
-	render_cb render;
-} Macro[] = {
-	{ "HEADER",		"header.html",	&render_main_simple },
-	{ "FOOTER",		"footer.html",	&render_main_simple },
-	{ "STORIES_HTML",	"story.html",	&render_story_list },
-	{ "STORIES_RSS",	"story.rss",	&render_story_list },
-	{ "ARTICLE",		NULL,		&render_article },
-	{ "BASEURL",		NULL,		&render_baseurl },
-	{ "BODY",		NULL,		&render_body },
-	{ "CTYPE",		NULL,		&render_ctype },
-	{ "DATE",		NULL,		&render_date },
-	{ "LINK",		NULL,		&render_link },
-	{ "TITLE",		NULL,		&render_title },
-	{ NULL,			NULL,		NULL },
-};
+static void render_nlist_add(void);
+static void render_main(const char *macro, void *arg);
+static void render_items_list(const char *macro, void *arg);
+static void render_link(const char *macro, void *arg);
+static void render_body(const char *macro, void *arg);
+static void render_date(const char *macro, void *arg);
+static void render_baseurl(const char *macro, void *arg);
+static void render_ctype(const char *macro, void *arg);
+static void render_topic(const char *macro, void *arg);
+static void render_title(const char *macro, void *arg);
+static void render_article(const char *macro, void *arg);
 
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
@@ -80,7 +60,10 @@ static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefil
     NULL };
 
 static struct cez_queue config;
+static struct cez_render render;
 static struct feed feed;
+
+static int RSS = 0;
 
 static void
 msg(const char *fmt, ...)
@@ -410,6 +393,7 @@ main(int argc, const char **argv)
 	}
 
 	TAILQ_INIT(&feed.head);
+	render_nlist_add();
 
 	char *fn;
 	struct entry e;
@@ -417,18 +401,19 @@ main(int argc, const char **argv)
 	fn = pool_printf(pool, "%s", cqg(&config, "datadir"));
 	find_articles(pool, fn, 10);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
+		RSS = 1;
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
-		fn = pool_printf(pool, "%s/summary.rss", cqg(&config, "htmldir"));
+		cez_render_call(&render, "MAINRSS", &e);
 	} else {
 		printf("%s\r\n\r\n", cqg(&config, "ct_html"));
-		fn = pool_printf(pool, "%s/main.html", cqg(&config, "htmldir"));
+		cez_render_call(&render, "MAINHTML", &e);
 	}
-	render_main(fn, &render_macro, &e);
 	fflush(stdout);
 
 done:
 	fflush(stdout);
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
+	cez_render_purge(&render);
 purge:
 	pool_free(pool);
 	cez_queue_purge(&config);
@@ -441,73 +426,60 @@ purge:
  */
 
 static void
-render_main(const char *html_fn, render_cb r, const struct entry *e)
+render_nlist_add(void)
 {
-	FILE *f;
-	char s[8192];
+	char fn[256];
 
-	if ((f = fopen(html_fn, "re")) == NULL) {
-		printf("ERROR: fopen: %s: %s<br>\n", html_fn,
-		    strerror(errno));
-		return;
-	}
-	while (fgets(s, sizeof(s), f)) {
-		char *a, *b;
-
-		for (a = s; (b = strstr(a, "%%")) != NULL;) {
-			*b = 0;
-			printf("%s", a);
-			a = b + 2;
-			if ((b = strstr(a, "%%")) != NULL) {
-				*b = 0;
-				if (r != NULL) {
-					(*r)(a, e);
-				}
-				a = b + 2;
-			}
-		}
-		printf("%s", a);
-	}
-	fclose(f);
+	cez_render_init(&render);
+	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "main.html");
+	cez_render_add(&render, "MAINHTML", fn, (struct entry *)render_main);
+	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "main.rss");
+	cez_render_add(&render, "MAINRSS", fn, (struct entry *)render_main);
+	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "header.html");
+	cez_render_add(&render, "HEADER", fn, (struct entry *)render_main);
+	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "footer.html");
+	cez_render_add(&render, "FOOTER", fn, (struct entry *)render_main);
+	cez_render_add(&render, "ITEMSLIST", NULL, (struct entry *)render_items_list);
+	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "item.html");
+	cez_render_add(&render, "ITEMHTML", fn, (struct entry *)render_main);
+	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "item.rss");
+	cez_render_add(&render, "ITEMRSS", fn, (struct entry *)render_main);
+	cez_render_add(&render, "ARTICLE", NULL, (struct entry *)render_article);
+	cez_render_add(&render, "BASEURL", NULL, (struct entry *)render_baseurl);
+	cez_render_add(&render, "BODY", NULL, (struct entry *)render_body);
+	cez_render_add(&render, "CTYPE", NULL, (struct entry *)render_ctype);
+	cez_render_add(&render, "TOPIC", NULL, (struct entry *)render_topic);
+	cez_render_add(&render, "DATE", NULL, (struct entry *)render_date);
+	cez_render_add(&render, "LINK", NULL, (struct entry *)render_link);
+	cez_render_add(&render, "TITLE", NULL, (struct entry *)render_title);
 }
 
 static void
-render_macro(const char *m, const struct entry *e)
+render_main(const char *macro, void *arg)
 {
-	int i;
-	char fn[1024];
-
-	for (i = 0; Macro[i].name; i++) {
-		if (strcmp(Macro[i].name, m) == 0) {
-			if (Macro[i].file != NULL) {
-				snprintf(fn, sizeof(fn), "%s/%s",
-					cqg(&config, "htmldir"), Macro[i].file);
-				(*Macro[i].render)(fn, e);
-			} else {
-				(*Macro[i].render)(NULL, e);
-			}
-			break;
-		}
-	}
-	if (Macro[i].name == NULL)
-		printf("%s: unknown macro '%s'<br>\n", __func__, m);
+	cez_render_call(&render, macro, arg);
 }
 
 static void
-render_story_list(const char *m, const struct entry *e)
+render_items_list(const char *macro, void *e)
 {
 	struct entry *current;
 
 	TAILQ_FOREACH(current, &feed.head, item) {
-		render_main(m, &render_macro, current);
+		if (RSS == 1) {
+			cez_render_call(&render, "ITEMRSS", (void *)current);
+		} else {
+			cez_render_call(&render, "ITEMHTML", (void *)current);
+		}
 	}
 }
 
 static void
-render_body(const char *m, const struct entry *e)
+render_body(const char *macro, void *arg)
 {
 	FILE *f;
 	char s[8192];
+	struct entry *e = (struct entry *)arg;
 
 	if ((f = fopen(e->fn, "re")) == NULL) {
 		printf("%s: fopen %s: %s\n", __func__, e->fn, strerror(errno));
@@ -522,38 +494,42 @@ render_body(const char *m, const struct entry *e)
 }
 
 static void
-render_main_simple(const char *m, const struct entry *e)
-{
-	render_main(m, &render_macro, NULL);
-}
-
-static void
-render_baseurl(const char *m, const struct entry *e)
+render_baseurl(const char *macro, void *arg)
 {
 	printf("%s", cqg(&config, "baseurl"));
 }
 
 static void
-render_date(const char *m, const struct entry *e)
+render_date(const char *macro, void *arg)
 {
-	printf("%s", ctime(&e->pubdate));
+	struct entry *e = (struct entry *)arg;
+	// strip new line
+	printf("%.24s", ctime(&e->pubdate));
 }
 
 static void
-render_title(const char *m, const struct entry *e)
+render_title(const char *m, void *arg)
 {
+	struct entry *e = (struct entry *)arg;
 	printf("%s", e->title);
 }
 
 static void
-render_ctype(const char *m, const struct entry *e)
+render_ctype(const char *macro, void *arg)
 {
 	printf("%s", cqg(&config, "ct_html"));
 }
 
 static void
-render_article(const char *m, const struct entry *e)
+render_topic(const char *macro, void *arg)
 {
+	printf("%s", cqg(&config, "topic"));
+}
+
+static void
+render_article(const char *macro, void *arg)
+{
+	struct entry *e = (struct entry *)arg;
 	if (e->parent) {
 		printf("%s/", e->parent);
 	}
@@ -561,7 +537,8 @@ render_article(const char *m, const struct entry *e)
 }
 
 static void
-render_link(const char *m, const struct entry *e)
+render_link(const char *macro, void *arg)
 {
+	struct entry *e = (struct entry *)arg;
 	printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
 }
