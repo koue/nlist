@@ -42,7 +42,9 @@
 
 #include "nlist.h"
 
-static void render_nlist_add(void);
+#define cradd cez_render_add
+
+static void render_nlist_init(struct pool *pool);
 static void render_main(const char *macro, void *arg);
 static void render_items_list(const char *macro, void *arg);
 static void render_link(const char *macro, void *arg);
@@ -376,7 +378,7 @@ main(int argc, const char **argv)
 		for (i = 0; valgrindme[i] != NULL; ++i) {
 			valgrindstr = pool_printf(pool, "%s/%s",
 				    CHROOT, cqg(&config, valgrindme[i]));
-			if (cqu(&config, params[i], valgrindstr) == -1) {
+			if (cqu(&config, valgrindme[i], valgrindstr) == -1) {
 				fprintf(stderr, "Cannot adjust %s\n. Exit.",
 					    valgrindme[i]);
 				pool_free(pool);
@@ -393,7 +395,7 @@ main(int argc, const char **argv)
 	}
 
 	TAILQ_INIT(&feed.head);
-	render_nlist_add();
+	render_nlist_init(pool);
 
 	char *fn;
 	struct entry e;
@@ -408,7 +410,6 @@ main(int argc, const char **argv)
 		printf("%s\r\n\r\n", cqg(&config, "ct_html"));
 		cez_render_call(&render, "MAINHTML", &e);
 	}
-	fflush(stdout);
 
 done:
 	fflush(stdout);
@@ -425,33 +426,37 @@ purge:
  *
  */
 
-static void
-render_nlist_add(void)
+static char *
+radjust(struct pool *pool, const char *file)
 {
-	char fn[256];
+	char *fn;
 
+	if (file == NULL) {
+		return (NULL);
+	}
+	fn = pool_printf(pool, "%s/%s", cqg(&config, "htmldir"), file);
+	return (fn);
+}
+
+static void
+render_nlist_init(struct pool *pool)
+{
 	cez_render_init(&render);
-	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "main.html");
-	cez_render_add(&render, "MAINHTML", fn, (struct entry *)render_main);
-	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "main.rss");
-	cez_render_add(&render, "MAINRSS", fn, (struct entry *)render_main);
-	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "header.html");
-	cez_render_add(&render, "HEADER", fn, (struct entry *)render_main);
-	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "footer.html");
-	cez_render_add(&render, "FOOTER", fn, (struct entry *)render_main);
-	cez_render_add(&render, "ITEMSLIST", NULL, (struct entry *)render_items_list);
-	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "item.html");
-	cez_render_add(&render, "ITEMHTML", fn, (struct entry *)render_main);
-	snprintf(fn, sizeof(fn), "%s/%s", cqg(&config, "htmldir"), "item.rss");
-	cez_render_add(&render, "ITEMRSS", fn, (struct entry *)render_main);
-	cez_render_add(&render, "ARTICLE", NULL, (struct entry *)render_article);
-	cez_render_add(&render, "BASEURL", NULL, (struct entry *)render_baseurl);
-	cez_render_add(&render, "BODY", NULL, (struct entry *)render_body);
-	cez_render_add(&render, "CTYPE", NULL, (struct entry *)render_ctype);
-	cez_render_add(&render, "TOPIC", NULL, (struct entry *)render_topic);
-	cez_render_add(&render, "DATE", NULL, (struct entry *)render_date);
-	cez_render_add(&render, "LINK", NULL, (struct entry *)render_link);
-	cez_render_add(&render, "TITLE", NULL, (struct entry *)render_title);
+	cradd(&render, "MAINHTML", radjust(pool, "main.html"), (struct entry *)render_main);
+	cradd(&render, "MAINRSS", radjust(pool, "main.rss"), (struct entry *)render_main);
+	cradd(&render, "HEADER", radjust(pool, "header.html"), (struct entry *)render_main);
+	cradd(&render, "FOOTER", radjust(pool,"footer.html"), (struct entry *)render_main);
+	cradd(&render, "ITEMSLIST", NULL, (struct entry *)render_items_list);
+	cradd(&render, "ITEMHTML", radjust(pool, "item.html"), (struct entry *)render_main);
+	cradd(&render, "ITEMRSS", radjust(pool, "item.rss"), (struct entry *)render_main);
+	cradd(&render, "ARTICLE", NULL, (struct entry *)render_article);
+	cradd(&render, "BASEURL", NULL, (struct entry *)render_baseurl);
+	cradd(&render, "BODY", NULL, (struct entry *)render_body);
+	cradd(&render, "CTYPE", NULL, (struct entry *)render_ctype);
+	cradd(&render, "TOPIC", NULL, (struct entry *)render_topic);
+	cradd(&render, "DATE", NULL, (struct entry *)render_date);
+	cradd(&render, "LINK", NULL, (struct entry *)render_link);
+	cradd(&render, "TITLE", NULL, (struct entry *)render_title);
 }
 
 static void
@@ -481,6 +486,10 @@ render_body(const char *macro, void *arg)
 	char s[8192];
 	struct entry *e = (struct entry *)arg;
 
+	if (e == NULL || e->fn == NULL) {
+		return;
+	}
+
 	if ((f = fopen(e->fn, "re")) == NULL) {
 		printf("%s: fopen %s: %s\n", __func__, e->fn, strerror(errno));
 		return;
@@ -503,6 +512,10 @@ static void
 render_date(const char *macro, void *arg)
 {
 	struct entry *e = (struct entry *)arg;
+
+	if (e == NULL || e->pubdate == 0) {
+		return;
+	}
 	// strip new line
 	printf("%.24s", ctime(&e->pubdate));
 }
@@ -511,6 +524,10 @@ static void
 render_title(const char *m, void *arg)
 {
 	struct entry *e = (struct entry *)arg;
+
+	if (e == NULL || e->title == NULL) {
+		return;
+	}
 	printf("%s", e->title);
 }
 
@@ -530,6 +547,11 @@ static void
 render_article(const char *macro, void *arg)
 {
 	struct entry *e = (struct entry *)arg;
+
+	if (e == NULL || e->name == NULL) {
+		return;
+	}
+
 	if (e->parent) {
 		printf("%s/", e->parent);
 	}
@@ -540,5 +562,10 @@ static void
 render_link(const char *macro, void *arg)
 {
 	struct entry *e = (struct entry *)arg;
+
+	if (e == NULL || e->name == NULL) {
+		return;
+	}
+
 	printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
 }
