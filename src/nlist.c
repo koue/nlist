@@ -47,14 +47,8 @@
 static void render_nlist_init(struct pool *pool);
 static void render_main(const char *macro, void *arg);
 static void render_items_list(const char *macro, void *arg);
-static void render_link(const char *macro, void *arg);
 static void render_body(const char *macro, void *arg);
-static void render_date(const char *macro, void *arg);
-static void render_baseurl(const char *macro, void *arg);
-static void render_ctype(const char *macro, void *arg);
-static void render_topic(const char *macro, void *arg);
-static void render_title(const char *macro, void *arg);
-static void render_article(const char *macro, void *arg);
+static void render_print(const char *macro, void *arg);
 
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
     "baseurl", "ct_html", NULL };
@@ -449,14 +443,14 @@ render_nlist_init(struct pool *pool)
 	cradd(&render, "ITEMSLIST", NULL, (struct entry *)render_items_list);
 	cradd(&render, "ITEMHTML", radjust(pool, "item.html"), (struct entry *)render_main);
 	cradd(&render, "ITEMRSS", radjust(pool, "item.rss"), (struct entry *)render_main);
-	cradd(&render, "ARTICLE", NULL, (struct entry *)render_article);
-	cradd(&render, "BASEURL", NULL, (struct entry *)render_baseurl);
+	cradd(&render, "ARTICLE", NULL, (struct entry *)render_print);
+	cradd(&render, "BASEURL", NULL, (struct entry *)render_print);
 	cradd(&render, "BODY", NULL, (struct entry *)render_body);
-	cradd(&render, "CTYPE", NULL, (struct entry *)render_ctype);
-	cradd(&render, "TOPIC", NULL, (struct entry *)render_topic);
-	cradd(&render, "DATE", NULL, (struct entry *)render_date);
-	cradd(&render, "LINK", NULL, (struct entry *)render_link);
-	cradd(&render, "TITLE", NULL, (struct entry *)render_title);
+	cradd(&render, "CTYPE", NULL, (struct entry *)render_print);
+	cradd(&render, "TOPIC", NULL, (struct entry *)render_print);
+	cradd(&render, "DATE", NULL, (struct entry *)render_print);
+	cradd(&render, "LINK", NULL, (struct entry *)render_print);
+	cradd(&render, "TITLE", NULL, (struct entry *)render_print);
 }
 
 static void
@@ -503,69 +497,54 @@ render_body(const char *macro, void *arg)
 }
 
 static void
-render_baseurl(const char *macro, void *arg)
-{
-	printf("%s", cqg(&config, "baseurl"));
-}
-
-static void
-render_date(const char *macro, void *arg)
+render_print(const char *macro, void *arg)
 {
 	struct entry *e = (struct entry *)arg;
 
-	if (e == NULL || e->pubdate == 0) {
+	if (strcmp(macro, "BASEURL") == 0) {
+		printf("%s", cqg(&config, "baseurl"));
 		return;
 	}
-	// strip new line
-	printf("%.24s", ctime(&e->pubdate));
-}
-
-static void
-render_title(const char *m, void *arg)
-{
-	struct entry *e = (struct entry *)arg;
-
-	if (e == NULL || e->title == NULL) {
+	if (strcmp(macro, "CTYPE") == 0) {
+		printf("%s", cqg(&config, "ct_html"));
 		return;
 	}
-	printf("%s", e->title);
-}
-
-static void
-render_ctype(const char *macro, void *arg)
-{
-	printf("%s", cqg(&config, "ct_html"));
-}
-
-static void
-render_topic(const char *macro, void *arg)
-{
-	printf("%s", cqg(&config, "topic"));
-}
-
-static void
-render_article(const char *macro, void *arg)
-{
-	struct entry *e = (struct entry *)arg;
-
-	if (e == NULL || e->name == NULL) {
+	if (strcmp(macro, "TOPIC") == 0) {
+		printf("%s", cqg(&config, "topic"));
 		return;
 	}
 
-	if (e->parent) {
-		printf("%s/", e->parent);
-	}
-	printf("%s", e->name);
-}
-
-static void
-render_link(const char *macro, void *arg)
-{
-	struct entry *e = (struct entry *)arg;
-
-	if (e == NULL || e->name == NULL) {
+	if (e == NULL) {
 		return;
 	}
 
-	printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
+	if (strcmp(macro, "ARTICLE") == 0) {
+		if (e->name) {
+			if (e->parent) {
+				printf("%s/", e->parent);
+			}
+			printf("%s", e->name);
+		}
+		return;
+	}
+
+	if (strcmp(macro, "DATE") == 0) {
+		if (e->pubdate) {
+			// strip new line
+			printf("%.24s", ctime(&e->pubdate));
+		}
+		return;
+	}
+	if (strcmp(macro, "LINK") == 0) {
+		if (e->name) {
+			printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
+		}
+		return;
+	}
+	if (strcmp(macro, "TITLE") == 0) {
+		if (e->title) {
+			printf("%s", e->title);
+		}
+		return;
+	}
 }
