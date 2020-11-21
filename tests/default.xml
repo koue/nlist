@@ -1,0 +1,35 @@
+Content-Type: application/rss+xml; charset=utf-8
+
+<?xml version="1.0" encoding="utf-8"?>
+
+<rss version="0.92">
+  <channel>
+
+    <title>koue</title>
+    <link>http://koue.chaosophia.net/</link>
+    <description>open yourself for chaos</description>
+    <language>en-us</language>
+    <managingEditor>koue@chaosophia.net</managingEditor>
+
+    <item>
+      <title>My second title</title>
+      <link>http://koue.chaosophia.net/my/second.html</link>
+      <pubDate>Sat Nov 21 01:10:52 2020</pubDate>
+      <description><![CDATA[
+My second line
+]]></description>
+    </item>
+
+    <item>
+      <title>My first title</title>
+      <link>http://koue.chaosophia.net/my/first.html</link>
+      <pubDate>Sat Nov 21 01:10:52 2020</pubDate>
+      <description><![CDATA[
+My first line
+]]></description>
+    </item>
+
+
+
+  </channel>
+</rss>

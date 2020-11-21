@@ -21,6 +21,9 @@ MYUSERCMD=	grep MYUSER $(MYHEADER) | cut -d '"' -f 2
 MYUSER=		${MYUSERCMD:sh}
 MYGROUPCMD=	grep MYGROUP $(MYHEADER) | cut -d '"' -f 2
 MYGROUP=	${MYGROUPCMD:sh}
+# TESTS
+TESTCMD=	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI)
+LONG=		iamveryverylongqueryxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 .if exists(src/nlist)
 CGILDD=		ldd src/nlist | grep "=>" | cut -d ' ' -f 3
@@ -59,14 +62,59 @@ first:
 	printf "$(TESTTITLE2)\n$(TESTLINE2)" > $(LOCALBASE)$(DATADIR)/data/second.txt
 
 test:	chroot install first
-	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTTITLE1)"
-	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTLINE1)"
-	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTTITLE2)"
-	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI) | grep "$(TESTLINE2)"
+	# default html
+	QUERY_STRING='' $(TESTCMD) > tests/test.file
+	diff -q -I 'Posted on <time datetime' tests/default.html tests/test.file
+	# first item
+	QUERY_STRING='/first.html' $(TESTCMD) > tests/test.file
+	diff -q -I 'Posted on <time datetime' tests/first.html tests/test.file
+	# second item
+	QUERY_STRING='/second.html' $(TESTCMD) > tests/test.file
+	diff -q -I 'Posted on <time datetime' tests/second.html tests/test.file
+	# default rss
+	QUERY_STRING='/rss' $(TESTCMD) > tests/test.file
+	diff -q -I '<pubDate>' tests/default.xml tests/test.file
+	# not exist
+	QUERY_STRING='iammissing' $(TESTCMD) > tests/test.file
+	diff -q tests/notexist.html tests/test.file
+	QUERY_STRING='/iammissing' $(TESTCMD) > tests/test.file
+	diff -q tests/notexist.html tests/test.file
+	QUERY_STRING='/iammissing.html' $(TESTCMD) > tests/test.file
+	diff -q tests/notexist.html tests/test.file
+	# long query
+	QUERY_STRING='$(LONG)' $(TESTCMD) > tests/test.file
+	diff -q tests/longquery.html tests/test.file
+	# &amp;
+	QUERY_STRING='/startme&amp;here.html' $(TESTCMD) > tests/test.file
+	diff -q tests/escaped.html tests/test.file
+	# wrong query
+	QUERY_STRING='/i_am_wrong-1' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING='/i_am_wrong#my.html' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING='/i_am_wrong.my.html' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING='/i_am_wrong"my.html' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING='/i_am_wrong`my.html' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING='/i_am_wrong*my.html' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING='/i_am_wrong my.html' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING="/i_am_wrong'my.html" $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING='/i_am_wrong/../etc/hosts' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING='/i_am_wrong/../etc/hosts.html' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	QUERY_STRING='/i_am_wrong/..html' $(TESTCMD) > tests/test.file
+	diff -q tests/wrongquery.html tests/test.file
+	# remove test file
+	rm -f tests/test.file
 
 valgrind: chroot install first
-	$(VALGRINDCMD) ./src/nlist --valgrind | grep "$(TESTTITLE1)"
+	QUERY_STRING='' $(VALGRINDCMD) ./src/nlist --valgrind | grep "$(TESTTITLE1)"
+	QUERY_STRING='$(LONG)' $(VALGRINDCMD) ./src/nlist --valgrind | grep "Status: 400"
 
-#testquery:
-#	QUERY_STRING='/action/submit' chroot -u www -g www $(LOCALBASE) $(WEBDIR)/$(CGI)
 .include <bsd.subdir.mk>

@@ -198,7 +198,8 @@ render_error(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(s, sizeof(s), fmt, ap);
 	va_end(ap);
-	printf("%s\r\n\r\n", cqg(&config, "ct_html"));
+	printf("%s", cqg(&config, "ct_html"));
+	printf("\r\n\r\n");
 	fflush(stdout);
 	printf("<html><head><title>Error</title></head><body>\n");
 	printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
@@ -291,17 +292,18 @@ static int
 http_query_check(const char *s)
 {
 	if (strlen(s) > 64) {
-		printf("Status: 400\r\n\r\n You are trying to send very "
-		    "long query!\n");
-		fflush(stdout);
+		msg("warning main: long query '%s'", s);
+		printf("Status: 400");
+		printf("\r\n\r\n");
+		printf("You are trying to send very long query!\n");
 		return (-1);
 	}
 
 	if (strstr(s, "&amp;") != NULL) {
 		msg("warning main: escaped query '%s'", s);
-		printf("Status: 400\r\n\r\nHTML escaped ampersand in cgi "
-		    "query string \"%s\"\n", s);
-		fflush(stdout);
+		printf("Status: 400");
+		printf("\r\n\r\n");
+		printf("HTML escaped in cgi query string \"%s\"\n", s);
 		return (-1);
 	}
 
@@ -319,8 +321,9 @@ http_query_check(const char *s)
 			if ((i == (strlen(s)-5)) && (s[i] == '.')) {
 				continue;
 			}
-			printf("Status: 400\r\n\r\nYou are trying "
-			    "to send wrong query!\n");
+			printf("Status: 400");
+			printf("\r\n\r\n");
+			printf("You are trying to send wrong query!\n");
 			fflush(stdout);
 			return (-1);
 		}
@@ -392,17 +395,16 @@ main(int argc, const char **argv)
 	render_nlist_init(pool);
 
 	char *fn;
-	struct entry e;
-	memset(&e, 0, sizeof(e));
 	fn = pool_printf(pool, "%s", cqg(&config, "datadir"));
 	find_articles(pool, fn, 10);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		RSS = 1;
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
-		cez_render_call(&render, "MAINRSS", &e);
+		cez_render_call(&render, "MAINRSS", NULL);
 	} else {
-		printf("%s\r\n\r\n", cqg(&config, "ct_html"));
-		cez_render_call(&render, "MAINHTML", &e);
+		printf("%s", cqg(&config, "ct_html"));
+		printf("\r\n\r\n");
+		cez_render_call(&render, "MAINHTML", NULL);
 	}
 
 done:
