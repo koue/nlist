@@ -505,48 +505,22 @@ render_print(const char *macro, void *arg)
 
 	if (strcmp(macro, "BASEURL") == 0) {
 		printf("%s", cqg(&config, "baseurl"));
-		return;
-	}
-	if (strcmp(macro, "CTYPE") == 0) {
+	} else if (strcmp(macro, "CTYPE") == 0) {
 		printf("%s", cqg(&config, "ct_html"));
-		return;
-	}
-	if (strcmp(macro, "TOPIC") == 0) {
+	} else if (strcmp(macro, "TOPIC") == 0) {
 		printf("%s", cqg(&config, "topic"));
+	} else if (e == NULL) {
 		return;
-	}
-
-	if (e == NULL) {
-		return;
-	}
-
-	if (strcmp(macro, "ARTICLE") == 0) {
+	} else if (strcmp(macro, "ARTICLE") == 0) {
 		if (e->name) {
-			if (e->parent) {
-				printf("%s/", e->parent);
-			}
+			(e->parent) && printf("%s/", e->parent);
 			printf("%s", e->name);
 		}
-		return;
-	}
-
-	if (strcmp(macro, "DATE") == 0) {
-		if (e->pubdate) {
-			// strip new line
-			printf("%.24s", ctime(&e->pubdate));
-		}
-		return;
-	}
-	if (strcmp(macro, "LINK") == 0) {
-		if (e->name) {
-			printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
-		}
-		return;
-	}
-	if (strcmp(macro, "TITLE") == 0) {
-		if (e->title) {
-			printf("%s", e->title);
-		}
-		return;
+	} else if (strcmp(macro, "DATE") == 0) {
+		(e->pubdate) && printf("%.24s", ctime(&e->pubdate));
+	} else if (strcmp(macro, "LINK") == 0) {
+		(e->name) && printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
+	} else if (strcmp(macro, "TITLE") == 0) {
+		(e->title) && printf("%s", e->title);
 	}
 }
