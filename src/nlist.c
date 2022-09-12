@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2020 Nikola Kolev <koue@chaosophia.net>
+ * Copyright (c) 2011-2022 Nikola Kolev <koue@chaosophia.net>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,11 +38,11 @@
 #include <cez_core_pool.h>
 #include <cez_misc.h>
 #include <cez_queue.h>
-#include <cez_render.h>
+#include <render.h>
 
 #include "nlist.h"
 
-#define cradd cez_render_add
+#define radd render_add
 
 static void render_nlist_init(struct pool *pool);
 static void render_main(const char *macro, void *arg);
@@ -56,7 +56,7 @@ static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefil
     NULL };
 
 static struct cez_queue config;
-static struct cez_render render;
+static struct render render;
 static struct feed feed;
 
 static int RSS = 0;
@@ -400,17 +400,17 @@ main(int argc, const char **argv)
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		RSS = 1;
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
-		cez_render_call(&render, "MAINRSS", NULL);
+		render_run(&render, "MAINRSS", NULL);
 	} else {
 		printf("%s", cqg(&config, "ct_html"));
 		printf("\r\n\r\n");
-		cez_render_call(&render, "MAINHTML", NULL);
+		render_run(&render, "MAINHTML", NULL);
 	}
 
 done:
 	fflush(stdout);
 	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
-	cez_render_purge(&render);
+	render_purge(&render);
 purge:
 	pool_free(pool);
 	cez_queue_purge(&config);
@@ -437,28 +437,28 @@ radjust(struct pool *pool, const char *file)
 static void
 render_nlist_init(struct pool *pool)
 {
-	cez_render_init(&render);
-	cradd(&render, "MAINHTML", radjust(pool, "main.html"), (struct entry *)render_main);
-	cradd(&render, "MAINRSS", radjust(pool, "main.rss"), (struct entry *)render_main);
-	cradd(&render, "HEADER", radjust(pool, "header.html"), (struct entry *)render_main);
-	cradd(&render, "FOOTER", radjust(pool,"footer.html"), (struct entry *)render_main);
-	cradd(&render, "ITEMSLIST", NULL, (struct entry *)render_items_list);
-	cradd(&render, "ITEMHTML", radjust(pool, "item.html"), (struct entry *)render_main);
-	cradd(&render, "ITEMRSS", radjust(pool, "item.rss"), (struct entry *)render_main);
-	cradd(&render, "ARTICLE", NULL, (struct entry *)render_print);
-	cradd(&render, "BASEURL", NULL, (struct entry *)render_print);
-	cradd(&render, "BODY", NULL, (struct entry *)render_body);
-	cradd(&render, "CTYPE", NULL, (struct entry *)render_print);
-	cradd(&render, "TOPIC", NULL, (struct entry *)render_print);
-	cradd(&render, "DATE", NULL, (struct entry *)render_print);
-	cradd(&render, "LINK", NULL, (struct entry *)render_print);
-	cradd(&render, "TITLE", NULL, (struct entry *)render_print);
+	render_init(&render);
+	radd(&render, "MAINHTML", radjust(pool, "main.html"), (struct entry *)render_main);
+	radd(&render, "MAINRSS", radjust(pool, "main.rss"), (struct entry *)render_main);
+	radd(&render, "HEADER", radjust(pool, "header.html"), (struct entry *)render_main);
+	radd(&render, "FOOTER", radjust(pool,"footer.html"), (struct entry *)render_main);
+	radd(&render, "ITEMSLIST", NULL, (struct entry *)render_items_list);
+	radd(&render, "ITEMHTML", radjust(pool, "item.html"), (struct entry *)render_main);
+	radd(&render, "ITEMRSS", radjust(pool, "item.rss"), (struct entry *)render_main);
+	radd(&render, "ARTICLE", NULL, (struct entry *)render_print);
+	radd(&render, "BASEURL", NULL, (struct entry *)render_print);
+	radd(&render, "BODY", NULL, (struct entry *)render_body);
+	radd(&render, "CTYPE", NULL, (struct entry *)render_print);
+	radd(&render, "TOPIC", NULL, (struct entry *)render_print);
+	radd(&render, "DATE", NULL, (struct entry *)render_print);
+	radd(&render, "LINK", NULL, (struct entry *)render_print);
+	radd(&render, "TITLE", NULL, (struct entry *)render_print);
 }
 
 static void
 render_main(const char *macro, void *arg)
 {
-	cez_render_call(&render, macro, arg);
+	render_run(&render, macro, arg);
 }
 
 static void
@@ -468,9 +468,9 @@ render_items_list(const char *macro, void *e)
 
 	TAILQ_FOREACH(current, &feed.head, item) {
 		if (RSS == 1) {
-			cez_render_call(&render, "ITEMRSS", (void *)current);
+			render_run(&render, "ITEMRSS", (void *)current);
 		} else {
-			cez_render_call(&render, "ITEMHTML", (void *)current);
+			render_run(&render, "ITEMHTML", (void *)current);
 		}
 	}
 }
