@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2022 Nikola Kolev <koue@chaosophia.net>
+ * Copyright (c) 2011-2023 Nikola Kolev <koue@chaosophia.net>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -190,6 +190,21 @@ file_get_attr(struct pool *pool, FTSENT *fent)
 }
 
 static void
+render_400(const char *fmt, ...)
+{
+	va_list ap;
+	char s[8192];
+
+	va_start(ap, fmt);
+	vsnprintf(s, sizeof(s), fmt, ap);
+	va_end(ap);
+
+	printf("Status: 400");
+	printf("\r\n\r\n");
+	printf("%s\n", s);
+}
+
+static void
 render_error(const char *fmt, ...)
 {
 	va_list ap;
@@ -293,17 +308,13 @@ http_query_check(const char *s)
 {
 	if (strlen(s) > 64) {
 		msg("warning main: long query '%s'", s);
-		printf("Status: 400");
-		printf("\r\n\r\n");
-		printf("You are trying to send very long query!\n");
+		render_400("You are trying to send very long query!");
 		return (-1);
 	}
 
 	if (strstr(s, "&amp;") != NULL) {
 		msg("warning main: escaped query '%s'", s);
-		printf("Status: 400");
-		printf("\r\n\r\n");
-		printf("HTML escaped in cgi query string \"%s\"\n", s);
+		render_400("HTML escaped in cgi query string \"%s\"", s);
 		return (-1);
 	}
 
@@ -321,9 +332,7 @@ http_query_check(const char *s)
 			if ((i == (strlen(s)-5)) && (s[i] == '.')) {
 				continue;
 			}
-			printf("Status: 400");
-			printf("\r\n\r\n");
-			printf("You are trying to send wrong query!\n");
+			render_400("You are trying to send wrong query!");
 			fflush(stdout);
 			return (-1);
 		}
