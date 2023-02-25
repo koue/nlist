@@ -5,7 +5,9 @@ MYHEADER=	src/nlist.h
 DOMAINCMD=	grep DOMAIN $(MYHEADER) | cut -d '"' -f2
 DOMAIN=		${DOMAINCMD:sh}
 CHROOTCMD=	grep CHROOT $(MYHEADER) | cut -d '"' -f2
+CHROOTTESTCMD=	grep CHROOTTEST $(MYHEADER) | cut -d '"' -f2
 LOCALBASE=	${CHROOTCMD:sh}
+LOCALBASETEST=	${CHROOTTESTCMD:sh}
 DATADIR=	/opt/${DOMAIN}/nlist
 WEBDIR=		/htdocs/${DOMAIN}
 ETCDIR=		/etc
@@ -22,7 +24,7 @@ MYUSER=		${MYUSERCMD:sh}
 MYGROUPCMD=	grep MYGROUP $(MYHEADER) | cut -d '"' -f 2
 MYGROUP=	${MYGROUPCMD:sh}
 # TESTS
-TESTCMD=	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASE) $(WEBDIR)/$(CGI)
+TESTCMD=	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASETEST) $(WEBDIR)/$(CGI)
 LONG=		iamveryverylongqueryxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 .if exists(src/nlist)
@@ -61,7 +63,10 @@ first:
 	printf "$(TESTTITLE1)\n$(TESTLINE1)" > $(LOCALBASE)$(DATADIR)/data/first.txt
 	printf "$(TESTTITLE2)\n$(TESTLINE2)" > $(LOCALBASE)$(DATADIR)/data/second.txt
 
-test:	chroot install first
+test:
+	$(MAKE) LOCALBASE=$(LOCALBASETEST) chroot
+	$(MAKE) LOCALBASE=$(LOCALBASETEST) install
+	$(MAKE) LOCALBASE=$(LOCALBASETEST) first
 	# default html
 	QUERY_STRING='' $(TESTCMD) > tests/test.file
 	diff -q -I 'Posted on <time datetime' tests/default.html tests/test.file
@@ -113,7 +118,10 @@ test:	chroot install first
 	# remove test file
 	rm -f tests/test.file
 
-valgrind: chroot install first
+valgrind:
+	$(MAKE) LOCALBASE=$(LOCALBASETEST) chroot
+	$(MAKE) LOCALBASE=$(LOCALBASETEST) install
+	$(MAKE) LOCALBASE=$(LOCALBASETEST) first
 	QUERY_STRING='' $(VALGRINDCMD) ./src/nlist --valgrind | grep "$(TESTTITLE1)"
 	QUERY_STRING='$(LONG)' $(VALGRINDCMD) ./src/nlist --valgrind | grep "Status: 400"
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Nikola Kolev <koue@chaosophia.net>
+ * Copyright (c) 2020-2023 Nikola Kolev <koue@chaosophia.net>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,6 +38,7 @@
 #define	DOMAIN		"koue.chaosophia.net"
 #define	CONFFILE	"/etc/nlist.conf"
 #define	CHROOT		"/var/www"
+#define	CHROOTTEST	"/var/wwwtest"
 #define	MYUSER		"www"
 #define	MYGROUP		"www"
 

@@ -358,7 +358,7 @@ main(int argc, const char **argv)
 
 	cez_queue_init(&config);
 	if (valgrind) {
-		conffile = pool_printf(pool, "%s/%s", CHROOT, CONFFILE);
+		conffile = pool_printf(pool, "%s/%s", CHROOTTEST, CONFFILE);
 	} else {
 		conffile = pool_printf(pool, "%s", CONFFILE);
 	}
@@ -374,7 +374,7 @@ main(int argc, const char **argv)
 	if (valgrind) {
 		for (i = 0; valgrindme[i] != NULL; ++i) {
 			valgrindstr = pool_printf(pool, "%s/%s",
-				    CHROOT, cqg(&config, valgrindme[i]));
+				    CHROOTTEST, cqg(&config, valgrindme[i]));
 			if (cqu(&config, valgrindme[i], valgrindstr) == -1) {
 				fprintf(stderr, "Cannot adjust %s\n. Exit.",
 					    valgrindme[i]);

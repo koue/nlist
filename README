@@ -31,3 +31,12 @@ How to use on FreeBSD
 # service slowcgi start
 # service obhttpd start
 # printf "Title\nFirst line" > /var/www/opt/koue.chaosophia.net/nlist/data/first.txt
+
+
+Testing
+=======
+
+Use temporary 'CHROOTTEST' directory.
+
+$ make test
+$ make valgrind
