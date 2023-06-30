@@ -4,10 +4,13 @@ Simple blog written in C inspired by blosxom and undeadly.org
 How to use on FreeBSD
 
 # git clone https://github.com/koue/libcez
-# cd libcez/src/core && make && make install
 # cd libcez/src/misc && make && make install
-# cd libcez/src/queue && make && make install
-# cd libcez/src/render && make && make install
+# git clone https://github.com/koue/libpool
+# cd libpool/src && make && make install
+# git clone https://github.com/koue/libqueue
+# cd libqueue/src && make && make install
+# git clone https://github.com/koue/librender
+# cd librender/src && make && make install
 # git clone https://github.com/koue/nlist
 # cd nlist && make && make chroot && make install
 # pkg install obhttpd slowcgi

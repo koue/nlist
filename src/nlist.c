@@ -28,6 +28,7 @@
  *
  */
 
+#include <ctype.h>
 #include <errno.h>
 #include <fts.h>
 #include <stdio.h>
@@ -35,9 +36,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <cez_core_pool.h>
 #include <cez_misc.h>
-#include <cez_queue.h>
+#include <libpool.h>
+#include <libqueue.h>
 #include <render.h>
 
 #include "nlist.h"
@@ -55,7 +56,7 @@ static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
 static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefile",
     NULL };
 
-static struct cez_queue config;
+static struct queue config;
 static struct render render;
 static struct feed feed;
 
@@ -70,9 +71,9 @@ msg(const char *fmt, ...)
 	time_t t = time(NULL);
 	struct tm *tm = gmtime(&t);
 
-	if ((f = fopen(cqg(&config, "logfile"), "ae")) == NULL) {
+	if ((f = fopen(qg(&config, "logfile"), "ae")) == NULL) {
 		fprintf(stderr, "%s: cannot open logfile: %s\n", __func__,
-		    cqg(&config, "logfile"));
+		    qg(&config, "logfile"));
 		return;
 	}
 	fprintf(f, "%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d %s %s %s v%d [%u] ",
@@ -105,7 +106,7 @@ file_is_excluded(const char *name)
 	FILE *f;
 	char s[8192], *p;
 
-	if (( f = fopen(cqg(&config, "excludefile"), "re")) == NULL) {
+	if (( f = fopen(qg(&config, "excludefile"), "re")) == NULL) {
 		msg("Cannot open exclude file.");
 		return (0);
 	}
@@ -213,7 +214,7 @@ render_error(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(s, sizeof(s), fmt, ap);
 	va_end(ap);
-	printf("%s", cqg(&config, "ct_html"));
+	printf("%s", qg(&config, "ct_html"));
 	printf("\r\n\r\n");
 	fflush(stdout);
 	printf("<html><head><title>Error</title></head><body>\n");
@@ -365,28 +366,28 @@ main(int argc, const char **argv)
 		}
 	}
 
-	cez_queue_init(&config);
+	queue_init(&config);
 	if (valgrind) {
 		conffile = pool_printf(pool, "%s/%s", CHROOTTEST, CONFFILE);
 	} else {
 		conffile = pool_printf(pool, "%s", CONFFILE);
 	}
-	if (configfile_parse(conffile, &config) == -1) {
+	if (queue_file(conffile, &config) == -1) {
 		fprintf(stderr, "error load_conf: file '%s'\n", conffile );
 		goto purge;
 	}
-	if ((s = cez_queue_check(&config, params)) != NULL) {
+	if ((s = queue_check(&config, params)) != NULL) {
 		fprintf(stderr, "config check: %s is missing\n", s);
 		goto purge;
 	}
 
 	if (valgrind) {
 		for (i = 0; valgrindme[i] != NULL; ++i) {
-			valgrindstr = pool_printf(pool, "%s/%s",
-				    CHROOTTEST, cqg(&config, valgrindme[i]));
-			if (cqu(&config, valgrindme[i], valgrindstr) == -1) {
+			valgrindstr = pool_printf(pool, "%s/%s", CHROOTTEST,
+			    qg(&config, valgrindme[i]));
+			if (qu(&config, valgrindme[i], valgrindstr) == -1) {
 				fprintf(stderr, "Cannot adjust %s\n. Exit.",
-					    valgrindme[i]);
+				    valgrindme[i]);
 				pool_free(pool);
 				exit (1);
 			}
@@ -404,14 +405,14 @@ main(int argc, const char **argv)
 	render_nlist_init(pool);
 
 	char *fn;
-	fn = pool_printf(pool, "%s", cqg(&config, "datadir"));
+	fn = pool_printf(pool, "%s", qg(&config, "datadir"));
 	find_articles(pool, fn, 10);
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		RSS = 1;
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
 		render_run(&render, "MAINRSS", NULL);
 	} else {
-		printf("%s", cqg(&config, "ct_html"));
+		printf("%s", qg(&config, "ct_html"));
 		printf("\r\n\r\n");
 		render_run(&render, "MAINHTML", NULL);
 	}
@@ -422,7 +423,7 @@ done:
 	render_purge(&render);
 purge:
 	pool_free(pool);
-	cez_queue_purge(&config);
+	queue_purge(&config);
 	return (0);
 }
 
@@ -439,7 +440,7 @@ radjust(struct pool *pool, const char *file)
 	if (file == NULL) {
 		return (NULL);
 	}
-	fn = pool_printf(pool, "%s/%s", cqg(&config, "htmldir"), file);
+	fn = pool_printf(pool, "%s/%s", qg(&config, "htmldir"), file);
 	return (fn);
 }
 
@@ -513,11 +514,11 @@ render_print(const char *macro, void *arg)
 	struct entry *e = (struct entry *)arg;
 
 	if (strcmp(macro, "BASEURL") == 0) {
-		printf("%s", cqg(&config, "baseurl"));
+		printf("%s", qg(&config, "baseurl"));
 	} else if (strcmp(macro, "CTYPE") == 0) {
-		printf("%s", cqg(&config, "ct_html"));
+		printf("%s", qg(&config, "ct_html"));
 	} else if (strcmp(macro, "TOPIC") == 0) {
-		printf("%s", cqg(&config, "topic"));
+		printf("%s", qg(&config, "topic"));
 	} else if (e == NULL) {
 		return;
 	} else if (strcmp(macro, "ARTICLE") == 0) {
@@ -528,7 +529,7 @@ render_print(const char *macro, void *arg)
 	} else if (strcmp(macro, "DATE") == 0) {
 		(e->pubdate) && printf("%.24s", ctime(&e->pubdate));
 	} else if (strcmp(macro, "LINK") == 0) {
-		(e->name) && printf("%s/%s.html", cqg(&config, "baseurl"), e->name);
+		(e->name) && printf("%s/%s.html", qg(&config, "baseurl"), e->name);
 	} else if (strcmp(macro, "TITLE") == 0) {
 		(e->title) && printf("%s", e->title);
 	}
