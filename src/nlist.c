@@ -52,7 +52,7 @@ static void render_body(const char *macro, void *arg);
 static void render_print(const char *macro, void *arg);
 
 static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
-    "baseurl", "ct_html", NULL };
+    "baseurl", "ct_html", "entries", NULL };
 static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefile",
     NULL };
 
@@ -406,7 +406,7 @@ main(int argc, const char **argv)
 
 	char *fn;
 	fn = pool_printf(pool, "%s", qg(&config, "datadir"));
-	find_articles(pool, fn, 10);
+	find_articles(pool, fn, strtol(qg(&config, "entries"), (char **)NULL, 10));
 	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
 		RSS = 1;
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
