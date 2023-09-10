@@ -18,6 +18,8 @@ TESTTITLE1=	My first title
 TESTLINE1=	My first line
 TESTTITLE2=	My second title
 TESTLINE2=	My second line
+TESTTITLE3=	My third title
+TESTLINE3=	My third line
 VALGRINDCMD=	valgrind -q --tool=memcheck --leak-check=yes --show-leak-kinds=all --num-callers=20
 MYUSERCMD=	grep MYUSER $(MYHEADER) | cut -d '"' -f 2
 MYUSER=		${MYUSERCMD:sh}
@@ -62,6 +64,8 @@ update:
 first:
 	printf "$(TESTTITLE1)\n$(TESTLINE1)" > $(LOCALBASE)$(DATADIR)/data/first.txt
 	printf "$(TESTTITLE2)\n$(TESTLINE2)" > $(LOCALBASE)$(DATADIR)/data/second.txt
+	printf "$(TESTTITLE3)\n$(TESTLINE3)" > $(LOCALBASE)$(DATADIR)/data/third.txt
+	printf "second.txt" > $(LOCALBASE)$(DATADIR)/data/exclude_files
 
 test:
 	$(MAKE) LOCALBASE=$(LOCALBASETEST) chroot

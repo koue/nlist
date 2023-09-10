@@ -12,18 +12,18 @@ Content-Type: application/rss+xml; charset=utf-8
     <managingEditor>koue@chaosophia.net</managingEditor>
 
     <item>
-      <title>My second title</title>
-      <link>http://koue.chaosophia.net/my/second.html</link>
-      <pubDate>Sat Nov 21 01:10:52 2020</pubDate>
+      <title>My third title</title>
+      <link>http://koue.chaosophia.net/my/third.html</link>
+      <pubDate>Sun Sep 10 19:46:18 2023</pubDate>
       <description><![CDATA[
-My second line
+My third line
 ]]></description>
     </item>
 
     <item>
       <title>My first title</title>
       <link>http://koue.chaosophia.net/my/first.html</link>
-      <pubDate>Sat Nov 21 01:10:52 2020</pubDate>
+      <pubDate>Sun Sep 10 19:46:18 2023</pubDate>
       <description><![CDATA[
 My first line
 ]]></description>
