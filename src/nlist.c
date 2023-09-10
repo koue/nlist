@@ -163,7 +163,7 @@ file_read(struct pool *pool, struct entry *e)
 static struct entry *
 file_get_attr(struct pool *pool, FTSENT *fent)
 {
-	char *pos = fent->fts_name;
+	char *token, *pos = fent->fts_name;
 	struct entry *current = pool_alloc(pool, sizeof(struct entry));
 
 	/* Make sure cleared out */
@@ -175,7 +175,8 @@ file_get_attr(struct pool *pool, FTSENT *fent)
 		return (NULL);
 	}
 	/* if article in main directory don't use the parent */
-	if (strcmp(fent->fts_parent->fts_name, "data") != 0) {
+	token = strrchr(qg(&config, "datadir"), '/') + 1;
+	if (strcmp(fent->fts_parent->fts_name, token) != 0) {
 		current->parent = pool_strdup(pool, fent->fts_parent->fts_name);
 	} else {
 		current->parent = NULL;
