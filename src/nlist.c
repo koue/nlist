@@ -290,17 +290,18 @@ find_articles(struct pool *pool, const char *path, int size)
 		strlcpy(article, "index.txt", sizeof(article));
 	}
 	while ((( e = fts_read(fts)) != NULL) && (i < size)) {
-		if ((e->fts_info == FTS_F)
-		    && vf_parent(parent, e->fts_level, e->fts_parent->fts_name)
-		    && vf_article(article, e->fts_path, e->fts_name)
-		    && (file_is_txt(e->fts_name) == 0 )) {
-			if ((entry = file_get_attr(pool, e)) == NULL) {
-				continue;
-			} else {
-				feed_add(entry);
-			}
-			i++;
-		}
+		if (e->fts_info != FTS_F)
+			continue;
+		if (vf_parent(parent, e->fts_level, e->fts_parent->fts_name) != 1)
+			continue;
+		if (vf_article(article, e->fts_path, e->fts_name) != 1)
+			continue;
+		if (file_is_txt(e->fts_name) == -1 )
+			continue;
+		if ((entry = file_get_attr(pool, e)) == NULL)
+			continue;
+		feed_add(entry);
+		i++;
 	}
 	fts_close(fts);
 }
