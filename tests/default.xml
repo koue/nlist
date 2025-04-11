@@ -13,7 +13,7 @@ Content-Type: application/rss+xml; charset=utf-8
 
     <item>
       <title>My third title</title>
-      <link>http://koue.chaosophia.net/my/third.html</link>
+      <link>http://koue.chaosophia.net/my/TESTTHIRD.html</link>
       <pubDate>Sun Sep 10 19:46:18 2023</pubDate>
       <description><![CDATA[
 My third line
@@ -22,7 +22,7 @@ My third line
 
     <item>
       <title>My first title</title>
-      <link>http://koue.chaosophia.net/my/first.html</link>
+      <link>http://koue.chaosophia.net/my/TESTFIRST.html</link>
       <pubDate>Sun Sep 10 19:46:18 2023</pubDate>
       <description><![CDATA[
 My first line

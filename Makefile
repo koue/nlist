@@ -4,15 +4,14 @@ SUBDIR=		src
 MYHEADER=	src/nlist.h
 DOMAINCMD=	grep DOMAIN $(MYHEADER) | cut -d '"' -f2
 DOMAIN=		${DOMAINCMD:sh}
-CHROOTCMD=	grep CHROOT $(MYHEADER) | cut -d '"' -f2
 CHROOTTESTCMD=	grep CHROOTTEST $(MYHEADER) | cut -d '"' -f2
-LOCALBASE=	${CHROOTCMD:sh}
-LOCALBASETEST=	${CHROOTTESTCMD:sh}
-DATADIR=	/opt/${DOMAIN}/nlist
+CHROOTTEST=	${CHROOTTESTCMD:sh}
+DATADIR=	/data/${DOMAIN}/nlist
 WEBDIR=		/htdocs/${DOMAIN}
 ETCDIR=		/etc
 TMPDIR=		/tmp
 LIBEXECDIR=	/libexec
+LIBDIR=		/usr/lib
 CGI=		index.cgi
 TESTTITLE1=	My first title
 TESTLINE1=	My first line
@@ -26,7 +25,7 @@ MYUSER=		${MYUSERCMD:sh}
 MYGROUPCMD=	grep MYGROUP $(MYHEADER) | cut -d '"' -f 2
 MYGROUP=	${MYGROUPCMD:sh}
 # TESTS
-TESTCMD=	chroot -u $(MYUSER) -g $(MYGROUP) $(LOCALBASETEST) $(WEBDIR)/$(CGI)
+TESTCMD=	chroot -u $(MYUSER) -g $(MYGROUP) $(CHROOTTEST) $(WEBDIR)/$(CGI)
 LONG=		iamveryverylongqueryxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 .if exists(src/nlist)
@@ -36,49 +35,47 @@ CGIlibs=	${CGILDD:sh}
 .endif
 
 chroot:
-	mkdir -p $(LOCALBASE)$(LIBDIR)
-	mkdir -p $(LOCALBASE)$(DATADIR)/data
-	mkdir -p $(LOCALBASE)$(WEBDIR)
-	mkdir -p $(LOCALBASE)$(ETCDIR)
-	mkdir -p $(LOCALBASE)$(LIBEXECDIR)
-	mkdir -p $(LOCALBASE)$(TMPDIR)
-	cp /libexec/ld-elf.so.1 $(LOCALBASE)$(LIBEXECDIR)/
+	mkdir -p $(CHROOTTEST)/$(LIBDIR)
+	mkdir -p $(CHROOTTEST)/$(DATADIR)/data
+	mkdir -p $(CHROOTTEST)/$(DATADIR)/html
+	mkdir -p $(CHROOTTEST)/$(WEBDIR)/css
+	mkdir -p $(CHROOTTEST)/$(ETCDIR)
+	mkdir -p $(CHROOTTEST)/$(LIBEXECDIR)
+	mkdir -p $(CHROOTTEST)/$(TMPDIR)
+	cp /libexec/ld-elf.so.1 $(CHROOTTEST)/$(LIBEXECDIR)/
 .	for l in ${CGIlibs}
-	cp -f ${l} $(LOCALBASE)$(LIBDIR)/
+	cp -f ${l} $(CHROOTTEST)/$(LIBDIR)/
 .	endfor
 
 install:
-	rm -rf $(LOCALBASE)$(DATADIR)/html
-	rm -rf $(LOCALBASE)$(WEBDIR)/css
-	rm -rf $(LOCALBASE)$(ETC)/nlist.conf
-	cp src/nlist $(LOCALBASE)$(WEBDIR)/$(CGI)
-	cp etc/nlist.conf $(LOCALBASE)$(ETCDIR)/
-	sed -i.bak "s/%%DOMAIN%%/$(DOMAIN)/g" $(LOCALBASE)$(ETCDIR)/nlist.conf
-	cp -r html $(LOCALBASE)$(DATADIR)/
-	cp -r css $(LOCALBASE)$(WEBDIR)/
-	chown -R $(MYUSER):$(MYGROUP) $(LOCALBASE)$(DATADIR)/
+	cp src/nlist $(CHROOTTEST)/$(WEBDIR)/$(CGI)
+	cp etc/nlist.conf $(CHROOTTEST)/$(ETCDIR)/
+	sed -i.bak "s/%%DOMAIN%%/$(DOMAIN)/g" $(CHROOTTEST)/$(ETCDIR)/nlist.conf
+	cp html/* $(CHROOTTEST)/$(DATADIR)/html/
+	cp css/* $(CHROOTTEST)/$(WEBDIR)/css/
+	chown -R $(MYUSER):$(MYGROUP) $(CHROOTTEST)/$(DATADIR)/
 
 update:
-	cp src/nlist $(LOCALBASE)$(WEBDIR)/$(CGI)
+	cp src/nlist $(CHROOTTEST)/$(WEBDIR)/$(CGI)
 
 first:
-	printf "$(TESTTITLE1)\n$(TESTLINE1)" > $(LOCALBASE)$(DATADIR)/data/first.txt
-	printf "$(TESTTITLE2)\n$(TESTLINE2)" > $(LOCALBASE)$(DATADIR)/data/second.txt
-	printf "$(TESTTITLE3)\n$(TESTLINE3)" > $(LOCALBASE)$(DATADIR)/data/third.txt
-	printf "second.txt" > $(LOCALBASE)$(DATADIR)/data/exclude_files
+	printf "$(TESTTITLE1)\n$(TESTLINE1)" > $(CHROOTTEST)/$(DATADIR)/data/TESTFIRST.txt
+	printf "$(TESTTITLE2)\n$(TESTLINE2)" > $(CHROOTTEST)/$(DATADIR)/data/TESTSECOND.txt
+	printf "$(TESTTITLE3)\n$(TESTLINE3)" > $(CHROOTTEST)/$(DATADIR)/data/TESTTHIRD.txt
+	printf "TESTSECOND.txt" >> $(CHROOTTEST)/$(DATADIR)/data/exclude_files
 
 test:
-	$(MAKE) LOCALBASE=$(LOCALBASETEST) chroot
-	$(MAKE) LOCALBASE=$(LOCALBASETEST) install
-	$(MAKE) LOCALBASE=$(LOCALBASETEST) first
+	$(MAKE) chroot
+	$(MAKE) install
+	$(MAKE) first
 	# default html
 	QUERY_STRING='' $(TESTCMD) > tests/test.file
 	diff -q -I 'Posted on <time datetime' tests/default.html tests/test.file
 	# first item
-	QUERY_STRING='/first.html' $(TESTCMD) > tests/test.file
+	QUERY_STRING='/TESTFIRST.html' $(TESTCMD) > tests/test.file
 	diff -q -I 'Posted on <time datetime' tests/first.html tests/test.file
 	# second item
-	QUERY_STRING='/second.html' $(TESTCMD) > tests/test.file
+	QUERY_STRING='/TESTSECOND.html' $(TESTCMD) > tests/test.file
 	diff -q -I 'Posted on <time datetime' tests/second.html tests/test.file
 	# default rss
 	QUERY_STRING='/rss' $(TESTCMD) > tests/test.file
@@ -93,9 +90,6 @@ test:
 	# long query
 	QUERY_STRING='$(LONG)' $(TESTCMD) > tests/test.file
 	diff -q tests/longquery.html tests/test.file
-	# &amp;
-	QUERY_STRING='/startme&amp;here.html' $(TESTCMD) > tests/test.file
-	diff -q tests/escaped.html tests/test.file
 	# wrong query
 	QUERY_STRING='/i_am_wrong-1' $(TESTCMD) > tests/test.file
 	diff -q tests/wrongquery.html tests/test.file
@@ -123,9 +117,9 @@ test:
 	rm -f tests/test.file
 
 valgrind:
-	$(MAKE) LOCALBASE=$(LOCALBASETEST) chroot
-	$(MAKE) LOCALBASE=$(LOCALBASETEST) install
-	$(MAKE) LOCALBASE=$(LOCALBASETEST) first
+	$(MAKE) chroot
+	$(MAKE) install
+	$(MAKE) first
 	QUERY_STRING='' $(VALGRINDCMD) ./src/nlist --valgrind | grep "$(TESTTITLE1)"
 	QUERY_STRING='$(LONG)' $(VALGRINDCMD) ./src/nlist --valgrind | grep "Status: 400"
 

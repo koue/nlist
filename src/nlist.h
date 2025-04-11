@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2023 Nikola Kolev <koue@chaosophia.net>
+ * Copyright (c) 2020-2025 Nikola Kolev <koue@chaosophia.net>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,14 +33,19 @@
 
 #include <sys/queue.h>
 
-#define	VERSION		3003
+#define	VERSION		3004
 
 #define	DOMAIN		"koue.chaosophia.net"
 #define	CONFFILE	"/etc/nlist.conf"
-#define	CHROOT		"/var/www"
-#define	CHROOTTEST	"/var/wwwtest"
+#define CHROOTTEST	"WWWTEST"
 #define	MYUSER		"www"
 #define	MYGROUP		"www"
+
+struct request {
+	struct pool *pool;
+	char *parent;
+	char *article;
+};
 
 struct entry {
 	TAILQ_ENTRY(entry) item;

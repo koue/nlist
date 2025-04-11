@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2023 Nikola Kolev <koue@chaosophia.net>
+ * Copyright (c) 2011-2025 Nikola Kolev <koue@chaosophia.net>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -59,6 +59,7 @@ static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefil
 static struct queue config;
 static struct render render;
 static struct feed feed;
+static struct request *request;
 
 static int RSS = 0;
 
@@ -97,7 +98,13 @@ feed_add(struct entry *entry)
 static int
 vf_parent(const char *p, int l, const char *f)
 {
-	return(((strlen(p) == 0) && (l == 1)) || (strcmp(p, f)) == 0);
+	if (p == NULL) {
+		if (l == 1)
+			return (1);
+		else
+			return (0);
+	}
+	return((strcmp(p, f)) == 0);
 }
 
 static int
@@ -124,8 +131,14 @@ file_is_excluded(const char *name)
 static int
 vf_article(const char *a, const char *fp, const char *fn)
 {
-	return(((strlen(a) == 0) && (file_is_excluded(fp) == 0)) ||
-	    (strcmp(a, fn) == 0));
+	// No print for excluded files in the main directory if no article
+	if (a == NULL) {
+		if (file_is_excluded(fp))
+			return (0);
+		else
+			return (1);
+	}
+	return((strcmp(a, fn) == 0));
 }
 
 static int
@@ -237,10 +250,7 @@ find_articles(struct pool *pool, const char *path, int size)
 	FTSENT *e;
 	char * const path_argv[] = { (char*)path, NULL };
 	int i = 0;
-	char *tmp, *pos, article[128], parent[128], query[256];
 	struct entry *entry;
-
-	parent[0] = article[0] = 0;
 
 	if ((fts = fts_open(path_argv, FTS_LOGICAL, compare_name_des_fts))
 	    == NULL) {
@@ -258,43 +268,24 @@ find_articles(struct pool *pool, const char *path, int size)
 		return;
 	}
 
-	if((tmp = getenv("QUERY_STRING")) != NULL) {
-		snprintf(query, sizeof(query), "%s", tmp);
-		pos = query;
-		while ((tmp = strsep(&pos, "/")) != NULL) {
-			if(strlen(tmp)) {
-				if(strstr(tmp, ".html") != NULL) {
-					strlcpy(article, tmp, sizeof(article));
-					if ((tmp = strstr(article, ".")) != NULL) {
-						*tmp = 0;
-					}
-					strlcat(article,".txt",sizeof(article));
-				}
-				else {
-					strlcpy(parent, tmp, sizeof(parent));
-				}
-			}
-		}
-	}
-
 	/*
 	If there is parent but not article selected then show only index.txt
 	content. If the main directory should be shown then show all *.txt
 	files in the current directory.
 	*/
 	/* if rss generate rss from main directory */
-	if((strncmp(parent, "rss", 3)) == 0) {
-		parent[0] = 0;
+	if (RSS) {
+		request->parent = NULL;
 	}
-	if(parent[0] && !article[0]) {
-		strlcpy(article, "index.txt", sizeof(article));
+	if (request->parent && (request->article == NULL)) {
+		request->article = pool_strdup(pool, "index.txt");
 	}
 	while ((( e = fts_read(fts)) != NULL) && (i < size)) {
 		if (e->fts_info != FTS_F)
 			continue;
-		if (vf_parent(parent, e->fts_level, e->fts_parent->fts_name) != 1)
+		if (vf_parent(request->parent, e->fts_level, e->fts_parent->fts_name) != 1)
 			continue;
-		if (vf_article(article, e->fts_path, e->fts_name) != 1)
+		if (vf_article(request->article, e->fts_path, e->fts_name) != 1)
 			continue;
 		if (file_is_txt(e->fts_name) == -1 )
 			continue;
@@ -312,12 +303,6 @@ http_query_check(const char *s)
 	if (strlen(s) > 64) {
 		msg("warning main: long query '%s'", s);
 		render_400("You are trying to send very long query!");
-		return (-1);
-	}
-
-	if (strstr(s, "&amp;") != NULL) {
-		msg("warning main: escaped query '%s'", s);
-		render_400("HTML escaped in cgi query string \"%s\"", s);
 		return (-1);
 	}
 
@@ -342,6 +327,53 @@ http_query_check(const char *s)
 	}
 
 	return (0);
+}
+
+void
+request_set(struct request *current, char *query)
+{
+	char *article, *parent;
+
+	while ((parent = strsep(&query, "/")) != NULL) {
+		if (strlen(parent) == 0)
+			continue;
+		if (strstr(parent, ".html") != NULL) {
+			article = parent;
+			while (*parent && *parent != '.') {
+				parent++;
+			}
+			*parent = 0;
+			current->article = pool_printf(current->pool, "%s.txt", article);
+		} else {
+			current->parent = pool_strdup(current->pool, parent);
+		}
+	}
+}
+
+
+struct request *
+request_parse(struct pool *pool)
+{
+	struct request *current;
+	char *tmp, *pos;
+
+	current = pool_alloc(pool, sizeof(struct request));
+	memset(current, 0, sizeof(struct request));
+
+	current->pool = pool;
+	current->parent = NULL;
+	current->article = NULL;
+	if ((tmp = getenv("QUERY_STRING")) != NULL) {
+		if (http_query_check(tmp) == -1) {
+			return (NULL);
+		}
+		if (strncmp(tmp, "/rss", 4) == 0) {
+			RSS = 1;
+		} else {
+			request_set(current, tmp);
+		}
+	}
+	return (current);
 }
 
 int
@@ -396,11 +428,8 @@ main(int argc, const char **argv)
 		}
 	}
 
-	if ((s = getenv("QUERY_STRING")) != NULL) {
-		query = 1;
-		if (http_query_check(s) == -1) {
-			goto done;
-		}
+	if ((request = request_parse(pool)) == NULL) {
+		goto done;
 	}
 
 	TAILQ_INIT(&feed.head);
@@ -409,8 +438,7 @@ main(int argc, const char **argv)
 	char *fn;
 	fn = pool_printf(pool, "%s", qg(&config, "datadir"));
 	find_articles(pool, fn, strtol(qg(&config, "entries"), (char **)NULL, 10));
-	if (query && !strncmp(getenv("QUERY_STRING"), "/rss", 4)) {
-		RSS = 1;
+	if (RSS) {
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
 		render_run(&render, "MAINRSS", NULL);
 	} else {
