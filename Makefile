@@ -19,6 +19,8 @@ TESTTITLE2=	My second title
 TESTLINE2=	My second line
 TESTTITLE3=	My third title
 TESTLINE3=	My third line
+TESTTOPIC1=	My topic1
+TESTTOPIC2=	My topic2
 VALGRINDCMD=	valgrind -q --tool=memcheck --leak-check=yes --show-leak-kinds=all --num-callers=20
 MYUSERCMD=	grep MYUSER $(MYHEADER) | cut -d '"' -f 2
 MYUSER=		${MYUSERCMD:sh}
@@ -58,16 +60,21 @@ install:
 update:
 	cp src/nlist $(CHROOTTEST)/$(WEBDIR)/$(CGI)
 
-first:
+files:
 	printf "$(TESTTITLE1)\n$(TESTLINE1)" > $(CHROOTTEST)/$(DATADIR)/data/TESTFIRST.txt
 	printf "$(TESTTITLE2)\n$(TESTLINE2)" > $(CHROOTTEST)/$(DATADIR)/data/TESTSECOND.txt
 	printf "$(TESTTITLE3)\n$(TESTLINE3)" > $(CHROOTTEST)/$(DATADIR)/data/TESTTHIRD.txt
 	printf "TESTSECOND.txt" >> $(CHROOTTEST)/$(DATADIR)/data/exclude_files
+	mkdir -p $(CHROOTTEST)/$(DATADIR)/data/TOPIC1
+	printf "$(TESTTOPIC1)\n$(TESTTOPIC1)" > $(CHROOTTEST)/$(DATADIR)/data/TOPIC1/TESTTOPIC1.txt
+	mkdir -p $(CHROOTTEST)/$(DATADIR)/data/TOPIC2
+	printf "$(TESTTOPIC2)\n$(TESTTOPIC2)" > $(CHROOTTEST)/$(DATADIR)/data/TOPIC2/TESTTOPIC2.txt
+	printf "$(TESTTOPIC2)\nsubdirectory files" > $(CHROOTTEST)/$(DATADIR)/data/TOPIC2/index.txt
 
 test:
 	$(MAKE) chroot
 	$(MAKE) install
-	$(MAKE) first
+	$(MAKE) files
 	# default html
 	QUERY_STRING='' $(TESTCMD) > tests/test.file
 	diff -q -I 'Posted on <time datetime' tests/default.html tests/test.file
@@ -80,6 +87,13 @@ test:
 	# default rss
 	QUERY_STRING='/rss' $(TESTCMD) > tests/test.file
 	diff -q -I '<pubDate>' tests/default.xml tests/test.file
+	# subdirectory
+	QUERY_STRING='/TOPIC1/' $(TESTCMD) > tests/test.file
+	diff -q -I 'Posted on' tests/topic1_index.html tests/test.file
+	QUERY_STRING='/TOPIC1/TESTTOPIC1.html' $(TESTCMD) > tests/test.file
+	diff -q -I 'Posted on' tests/topic1.html tests/test.file
+	QUERY_STRING='/TOPIC2/' $(TESTCMD) > tests/test.file
+	diff -q -I 'Posted on' tests/topic2_index.html tests/test.file
 	# not exist
 	QUERY_STRING='iammissing' $(TESTCMD) > tests/test.file
 	diff -q tests/notexist.html tests/test.file
