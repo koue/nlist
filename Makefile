@@ -9,7 +9,6 @@ CHROOTTEST=	${CHROOTTESTCMD:sh}
 DATADIR=	/data/${DOMAIN}/nlist
 WEBDIR=		/htdocs/${DOMAIN}
 ETCDIR=		/etc
-TMPDIR=		/tmp
 LIBEXECDIR=	/libexec
 LIBDIR=		/usr/lib
 CGI=		index.cgi
@@ -43,7 +42,6 @@ chroot:
 	mkdir -p $(CHROOTTEST)/$(WEBDIR)/css
 	mkdir -p $(CHROOTTEST)/$(ETCDIR)
 	mkdir -p $(CHROOTTEST)/$(LIBEXECDIR)
-	mkdir -p $(CHROOTTEST)/$(TMPDIR)
 	cp /libexec/ld-elf.so.1 $(CHROOTTEST)/$(LIBEXECDIR)/
 .	for l in ${CGIlibs}
 	cp -f ${l} $(CHROOTTEST)/$(LIBDIR)/
@@ -129,11 +127,12 @@ test:
 	diff -q tests/wrongquery.html tests/test.file
 	# remove test file
 	rm -f tests/test.file
+	echo "== All good. =="
 
 valgrind:
 	$(MAKE) chroot
 	$(MAKE) install
-	$(MAKE) first
+	$(MAKE) files
 	QUERY_STRING='' $(VALGRINDCMD) ./src/nlist --valgrind | grep "$(TESTTITLE1)"
 	QUERY_STRING='$(LONG)' $(VALGRINDCMD) ./src/nlist --valgrind | grep "Status: 400"
 

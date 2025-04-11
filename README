@@ -12,34 +12,41 @@ How to use on FreeBSD
 # git clone https://github.com/koue/librender
 # cd librender/src && make && make install
 # git clone https://github.com/koue/nlist
-# cd nlist && make && make chroot && make install
+# cd nlist && make && make test
 # pkg install obhttpd slowcgi
 # cat /usr/local/etc/obhttpd.conf
 	chroot "/var/www"
 
 	server "koue.chaosophia.net" {
 		listen on 8.8.8.8 port 80
+		log {
+			access koue-access.log
+			error koue-error.log
+		}
 		root "/htdocs/koue.chaosophia.net"
 		directory index index.cgi
+		location match "/my(.*)" {
+			request rewrite "/index.cgi?%1"
+		}
 		location "/*.cgi" {
 			fastcgi socket "/run/slowcgi.sock"
 		}
 	}
 # sysrc obhttpd_enable="YES"
+# mkdir /var/www
+# cp -r WWWTEST/* /var/www
 # mkdir /var/www/logs
-# mkdir /var/www/tmp
 # mkdir /var/www/run
 # sysrc slowcgi_enable="YES"
 # sysrc slowcgi_flags="-p /var/www -s /var/www/run/slowcgi.sock -u www"
 # service slowcgi start
 # service obhttpd start
-# printf "Title\nFirst line" > /var/www/opt/koue.chaosophia.net/nlist/data/first.txt
+# printf "My new article\nMy first line" > /var/www/data/koue.chaosophia.net/nlist/data/article.txt
 
 
-Testing
+Valgrind
 =======
 
-Use temporary 'CHROOTTEST' directory.
+Uses temporary 'WWWTEST' directory.
 
-$ make test
 $ make valgrind

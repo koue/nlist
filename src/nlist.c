@@ -387,12 +387,6 @@ main(int argc, const char **argv)
 	int i, query = 0, valgrind = 0;
 
 	gettimeofday(&tx, NULL);
-	if (chdir("/tmp")) {
-		fprintf(stderr, "%s: chdir: /tmp: %s", __func__, strerror(errno));
-		pool_free(pool);
-		return (0);
-	}
-	umask(007);
 
 	for (i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--valgrind") == 0) {
