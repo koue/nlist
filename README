@@ -3,8 +3,6 @@ Simple blog written in C inspired by blosxom and undeadly.org
 
 How to use on FreeBSD
 
-# git clone https://github.com/koue/libcez
-# cd libcez/src/misc && make && make install
 # git clone https://github.com/koue/libpool
 # cd libpool/src && make && make install
 # git clone https://github.com/koue/libqueue

@@ -36,7 +36,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <cez_misc.h>
 #include <libpool.h>
 #include <libqueue.h>
 #include <render.h>
@@ -51,10 +50,9 @@ static void render_items_list(const char *macro, void *arg);
 static void render_body(const char *macro, void *arg);
 static void render_print(const char *macro, void *arg);
 
-static const char *params[] = { "datadir", "htmldir", "logfile", "excludefile",
-    "baseurl", "ct_html", "entries", NULL };
-static const char *valgrindme[] = { "datadir", "htmldir", "logfile", "excludefile",
-    NULL };
+static const char *params[] = { "datadir", "htmldir", "excludefile", "baseurl",
+	"ct_html", "entries", NULL };
+static const char *valgrindme[] = { "datadir", "htmldir", "excludefile", NULL };
 
 static struct queue config;
 static struct render render;
@@ -62,32 +60,6 @@ static struct feed feed;
 static struct request *request;
 
 static int RSS = 0;
-
-static void
-msg(const char *fmt, ...)
-{
-	extern char *__progname;
-	FILE *f;
-	va_list ap;
-	time_t t = time(NULL);
-	struct tm *tm = gmtime(&t);
-
-	if ((f = fopen(qg(&config, "logfile"), "ae")) == NULL) {
-		fprintf(stderr, "%s: cannot open logfile: %s\n", __func__,
-		    qg(&config, "logfile"));
-		return;
-	}
-	fprintf(f, "%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d %s %s %s v%d [%u] ",
-	    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-	    tm->tm_hour, tm->tm_min, tm->tm_sec, getenv("REMOTE_ADDR"), "-" ,
-	    __progname, VERSION, (unsigned)getpid());
-	va_start(ap, fmt);
-	vfprintf(f, fmt, ap);
-	va_end(ap);
-	fprintf(f, "\n");
-	fflush(f);
-	fclose(f);
-}
 
 static void
 feed_add(struct entry *entry)
@@ -113,8 +85,8 @@ file_is_excluded(const char *name)
 	FILE *f;
 	char s[8192], *p;
 
-	if (( f = fopen(qg(&config, "excludefile"), "re")) == NULL) {
-		msg("Cannot open exclude file.");
+	if ((f = fopen(qg(&config, "excludefile"), "re")) == NULL) {
+		fprintf(stderr, "Cannot open exclude file.");
 		return (0);
 	}
 	while (fgets(s, sizeof(s), f)) {
@@ -233,7 +205,6 @@ render_error(const char *fmt, ...)
 	fflush(stdout);
 	printf("<html><head><title>Error</title></head><body>\n");
 	printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
-	printf("Time: <b>%s</b><br>\n", rfc822_time(time(0)));
 	printf("</body></html>\n");
 }
 
@@ -301,7 +272,7 @@ static int
 http_query_check(const char *s)
 {
 	if (strlen(s) > 64) {
-		msg("warning main: long query '%s'", s);
+		fprintf(stderr, "warning main: long query '%s'", s);
 		render_400("You are trying to send very long query!");
 		return (-1);
 	}
@@ -443,7 +414,6 @@ main(int argc, const char **argv)
 
 done:
 	fflush(stdout);
-	msg("total %.1f ms query [%s]", timelapse(&tx), getenv("QUERY_STRING"));
 	render_purge(&render);
 purge:
 	pool_free(pool);
