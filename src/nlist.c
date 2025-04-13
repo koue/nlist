@@ -124,41 +124,45 @@ file_is_txt(const char *name)
 	}
 }
 
-static int
-file_read(struct pool *pool, struct entry *e)
+struct entry *
+file_read(struct pool *pool, const char *path)
 {
 	FILE *f;
 	char s[8192];
+	struct entry *current;
 
-	if ((f = fopen(e->fn, "re")) == NULL) {
-		return (-1);
+	if ((f = fopen(path, "re")) == NULL) {
+		return (NULL);
 	}
+
+	current = pool_alloc(pool, sizeof(struct entry));
+
+	/* Make sure cleared out */
+	memset(current, 0, sizeof(struct entry));
 
 	/* read first line - article title */
 	fgets(s, sizeof(s), f);
 	if (s[0]) {
 		s[strlen(s) - 1] = 0;
-		e->title = pool_strdup(pool, s);
+		current->title = pool_strdup(pool, s);
 	}
 
 	fclose(f);
-	return (0);
+	return (current);
 }
 
 static struct entry *
 file_get_attr(struct pool *pool, FTSENT *fent)
 {
 	char *token, *pos = fent->fts_name;
-	struct entry *current = pool_alloc(pool, sizeof(struct entry));
+	struct entry *current;
 
-	/* Make sure cleared out */
-	memset(current, 0, sizeof(struct entry));
+	if ((current = file_read(pool, fent->fts_path)) == NULL) {
+		return (NULL);
+	}
 
 	current->fn = pool_strdup(pool, fent->fts_path);
 
-	if (file_read(pool, current) == -1) {
-		return (NULL);
-	}
 	/* if article in main directory don't use the parent */
 	token = strrchr(qg(&config, "datadir"), '/') + 1;
 	if (strcmp(fent->fts_parent->fts_name, token) != 0) {
