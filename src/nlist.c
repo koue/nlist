@@ -124,7 +124,7 @@ file_is_txt(const char *name)
 	}
 }
 
-struct entry *
+static struct entry *
 file_read(struct pool *pool, const char *path)
 {
 	FILE *f;
@@ -351,17 +351,29 @@ request_parse(struct pool *pool)
 	return (current);
 }
 
+void
+valgrindfy(struct pool *pool)
+{
+	char *valgrindstr;
+
+	for (int i = 0; valgrindme[i] != NULL; ++i) {
+		valgrindstr = pool_printf(pool, "%s/%s", CHROOTTEST, qg(&config, valgrindme[i]));
+		if (qu(&config, valgrindme[i], valgrindstr) == -1) {
+			fprintf(stderr, "Cannot adjust %s\n. Exit.", valgrindme[i]);
+			pool_free(pool);
+			exit (1);
+		}
+	}
+}
+
 int
 main(int argc, const char **argv)
 {
 	struct pool *pool = pool_create(64);
 
-	const char *s;
-	char *valgrindstr, *conffile;
-	static struct timeval tx;
-	int i, query = 0, valgrind = 0;
-
-	gettimeofday(&tx, NULL);
+	const char *tmp;
+	char *conffile;
+	int i, valgrind = 0;
 
 	for (i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--valgrind") == 0) {
@@ -379,22 +391,13 @@ main(int argc, const char **argv)
 		fprintf(stderr, "error load_conf: file '%s'\n", conffile );
 		goto purge;
 	}
-	if ((s = queue_check(&config, params)) != NULL) {
-		fprintf(stderr, "config check: %s is missing\n", s);
+	if ((tmp = queue_check(&config, params)) != NULL) {
+		fprintf(stderr, "config check: %s is missing\n", tmp);
 		goto purge;
 	}
 
 	if (valgrind) {
-		for (i = 0; valgrindme[i] != NULL; ++i) {
-			valgrindstr = pool_printf(pool, "%s/%s", CHROOTTEST,
-			    qg(&config, valgrindme[i]));
-			if (qu(&config, valgrindme[i], valgrindstr) == -1) {
-				fprintf(stderr, "Cannot adjust %s\n. Exit.",
-				    valgrindme[i]);
-				pool_free(pool);
-				exit (1);
-			}
-		}
+		valgrindfy(pool);
 	}
 
 	if ((request = request_parse(pool)) == NULL) {
@@ -411,8 +414,7 @@ main(int argc, const char **argv)
 		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
 		render_run(&render, "MAINRSS", NULL);
 	} else {
-		printf("%s", qg(&config, "ct_html"));
-		printf("\r\n\r\n");
+		printf("%s\r\n\r\n", qg(&config, "ct_html"));
 		render_run(&render, "MAINHTML", NULL);
 	}
 
