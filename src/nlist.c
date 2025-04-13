@@ -51,7 +51,7 @@ static void render_body(const char *macro, void *arg);
 static void render_print(const char *macro, void *arg);
 
 static const char *params[] = { "datadir", "htmldir", "excludefile", "baseurl",
-	"ct_html", "entries", NULL };
+	"charset", "entries", NULL };
 static const char *valgrindme[] = { "datadir", "htmldir", "excludefile", NULL };
 
 static struct queue config;
@@ -204,8 +204,7 @@ render_error(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(s, sizeof(s), fmt, ap);
 	va_end(ap);
-	printf("%s", qg(&config, "ct_html"));
-	printf("\r\n\r\n");
+	printf("Content-Type: text/html; charset=%s\r\n\r\n", qg(&config, "charset"));
 	fflush(stdout);
 	printf("<html><head><title>Error</title></head><body>\n");
 	printf("<h2>Error</h2><p><b>%s</b><p>\n", s);
@@ -227,18 +226,15 @@ find_articles(struct pool *pool, const char *path, int size)
 	int i = 0;
 	struct entry *entry;
 
-	if ((fts = fts_open(path_argv, FTS_LOGICAL, compare_name_des_fts))
-	    == NULL) {
+	if ((fts = fts_open(path_argv, FTS_LOGICAL, compare_name_des_fts)) == NULL) {
 		printf("fts_open: %s: %s<br>\n", path, strerror(errno));
 		return;
 	} else if ((e = fts_read(fts)) == NULL || (e->fts_info != FTS_D)) {
-		printf("fts_read: fts_info %s: %s<br>\n", path,
-							strerror(errno));
+		printf("fts_read: fts_info %s: %s<br>\n", path, strerror(errno));
 		return;
 	} else if ((e = fts_children(fts, FTS_NAMEONLY)) == NULL) {
 		if (errno != 0) {
-			printf("fts_children: %s: %s<br>\n", path,
-							strerror(errno));
+			printf("fts_children: %s: %s<br>\n", path, strerror(errno));
 		}
 		return;
 	}
@@ -411,10 +407,10 @@ main(int argc, const char **argv)
 	fn = pool_printf(pool, "%s", qg(&config, "datadir"));
 	find_articles(pool, fn, strtol(qg(&config, "entries"), (char **)NULL, 10));
 	if (RSS) {
-		printf("Content-Type: application/rss+xml; charset=utf-8\r\n\r\n");
+		printf("Content-Type: application/rss+xml; charset=%s\r\n\r\n", qg(&config, "charset"));
 		render_run(&render, "MAINRSS", NULL);
 	} else {
-		printf("%s\r\n\r\n", qg(&config, "ct_html"));
+		printf("Content-Type: text/html; charset=%s\r\n\r\n", qg(&config, "charset"));
 		render_run(&render, "MAINHTML", NULL);
 	}
 
@@ -458,7 +454,7 @@ render_nlist_init(struct pool *pool)
 	radd(&render, "ARTICLE", NULL, (struct entry *)render_print);
 	radd(&render, "BASEURL", NULL, (struct entry *)render_print);
 	radd(&render, "BODY", NULL, (struct entry *)render_body);
-	radd(&render, "CTYPE", NULL, (struct entry *)render_print);
+	radd(&render, "CHARSET", NULL, (struct entry *)render_print);
 	radd(&render, "TOPIC", NULL, (struct entry *)render_print);
 	radd(&render, "DATE", NULL, (struct entry *)render_print);
 	radd(&render, "LINK", NULL, (struct entry *)render_print);
@@ -515,8 +511,8 @@ render_print(const char *macro, void *arg)
 
 	if (strcmp(macro, "BASEURL") == 0) {
 		printf("%s", qg(&config, "baseurl"));
-	} else if (strcmp(macro, "CTYPE") == 0) {
-		printf("%s", qg(&config, "ct_html"));
+	} else if (strcmp(macro, "CHARSET") == 0) {
+		printf("%s", qg(&config, "charset"));
 	} else if (strcmp(macro, "TOPIC") == 0) {
 		printf("%s", qg(&config, "topic"));
 	} else if (e == NULL) {
